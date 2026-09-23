@@ -66,6 +66,10 @@ def get_sidebar_for_default_workspace(user: str | None = None) -> Any | None:
 
 def _get_permitted_sidebar_items(sidebar: Any, allowed_workspaces: set[str]) -> list[dict[str, Any]]:
 	"""Keep section breaks only when they contain at least one permitted child link."""
+	from frappe.desk.desk_views import DeskViews
+	from frappe.desk.utils import is_item_allowed
+
+	ctx = DeskViews()
 	items: list[dict[str, Any]] = []
 	pending_section: dict[str, Any] | None = None
 	for item in sidebar.items:
@@ -73,9 +77,7 @@ def _get_permitted_sidebar_items(sidebar: Any, allowed_workspaces: set[str]) -> 
 			pending_section = _serialize_sidebar_item(item)
 			continue
 
-		if item.type != "Link" or not sidebar.is_item_allowed(
-			item.link_to, item.link_type, allowed_workspaces
-		):
+		if item.type != "Link" or not is_item_allowed(item.link_to, item.link_type, ctx):
 			continue
 
 		if pending_section and item.child:
