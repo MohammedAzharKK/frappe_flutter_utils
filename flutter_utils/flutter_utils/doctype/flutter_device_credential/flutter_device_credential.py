@@ -27,8 +27,27 @@ class FlutterDeviceCredential(Document):
 		user: DF.Link
 	# end: auto-generated types
 
+	def before_save(self) -> None:
+		# Passwords are encrypted later in Document._validate. Capture the previous
+		# generation before an administrator replaces the secret through ORM save.
+		if not self.is_new() and self.api_secret and self.api_secret != "********":
+			from flutter_utils.realtime import disconnect_rotated_device_sockets
+
+			disconnect_rotated_device_sockets(self.name)
+
 	def on_update(self) -> None:
+		from flutter_utils.realtime import disconnect_device_sockets
+
+		previous = self.get_doc_before_save()
+		if previous and previous.api_key != self.api_key:
+			disconnect_device_sockets(previous.api_key)
 		if not self.enabled:
 			from flutter_utils.push_notifications import deactivate_device_push
 
 			deactivate_device_push(self.name)
+			disconnect_device_sockets(self.api_key)
+
+	def on_trash(self) -> None:
+		from flutter_utils.realtime import disconnect_device_sockets
+
+		disconnect_device_sockets(self.api_key)

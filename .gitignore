@@ -1,3 +1,4 @@
 .opencode/
 __pycache__/
 *.py[cod]
+.ruff_cache/

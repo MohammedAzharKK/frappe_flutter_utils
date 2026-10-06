@@ -4,6 +4,11 @@ Flutter utility APIs for Frappe – exception handling and email/SMS OTP authent
 
 ## Features
 
+Realtime transport authentication is documented in
+[Managed Device Realtime Authentication](docs/realtime-authentication.md).
+Managed sockets are disconnected server-side after device revocation commits;
+deployments of the realtime handler require restarting Socket.IO as well as Python.
+
 - **Exception Handler**: Patches Frappe's default exception handler to return structured, human-readable JSON responses for Flutter clients.
 - **Email OTP Authentication**: Passwordless login and signup via configurable OTP sent to email.
 - **Native Password + 2FA Authentication**: Frappe-managed email/password login with Email, SMS, or OTP App verification, returning browser sessions or managed device credentials.

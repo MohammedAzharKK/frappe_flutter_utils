@@ -5,9 +5,13 @@ import frappe
 from frappe.auth import validate_auth
 
 from flutter_utils.auth import validate
+from flutter_utils.authentication.context import clear_authenticated_identity
 
 
 class TestRealtimeAuth(TestCase):
+	def tearDown(self) -> None:
+		clear_authenticated_identity()
+
 	def test_managed_scheme_uses_auth_hook_without_source_header(self) -> None:
 		original_user = frappe.session.user
 		form_dict = frappe.local.form_dict
@@ -20,7 +24,7 @@ class TestRealtimeAuth(TestCase):
 					"frappe.db.get_value",
 					side_effect=[frappe._dict(name="credential", user="test@example.invalid"), 1],
 				),
-				patch("flutter_utils.auth.get_decrypted_password", return_value="secret"),
+				patch("flutter_utils.authentication.device.get_decrypted_password", return_value="secret"),
 				patch("frappe.auth.validate_ip_address") as validate_ip,
 			):
 				validate_auth()
@@ -44,7 +48,7 @@ class TestRealtimeAuth(TestCase):
 				self.subTest(header=header, enabled=enabled),
 				patch("frappe.get_request_header", return_value=header),
 				patch("frappe.db.get_value", side_effect=[credential, enabled]),
-				patch("flutter_utils.auth.get_decrypted_password", return_value=secret),
+				patch("flutter_utils.authentication.device.get_decrypted_password", return_value=secret),
 				patch("frappe.set_user") as set_user,
 			):
 				with self.assertRaises(frappe.AuthenticationError):
@@ -62,7 +66,12 @@ class TestRealtimeAuth(TestCase):
 
 	def test_standard_tokens_are_left_to_frappe(self) -> None:
 		with (
-			patch("frappe.get_request_header", return_value="token key:secret"),
+			patch(
+				"frappe.get_request_header",
+				side_effect=lambda name, default="": (
+					"token key:secret" if name == "Authorization" else default
+				),
+			),
 			patch("frappe.db.get_value") as get_value,
 		):
 			validate()

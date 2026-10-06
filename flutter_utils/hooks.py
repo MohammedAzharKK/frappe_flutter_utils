@@ -42,11 +42,9 @@ after_install = "flutter_utils.install.after_install"
 # Document Events
 # ---------------
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 	}
-# }
+doc_events = {
+	"User": {"on_update": "flutter_utils.realtime.disconnect_disabled_user_sockets"},
+}
 
 # Scheduled Tasks
 # ---------------

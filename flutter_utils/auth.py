@@ -1,41 +1,33 @@
-import hmac
-
 import frappe
-from frappe.utils.password import get_decrypted_password
+
+from flutter_utils.authentication.context import (
+	AuthenticatedIdentity,
+	apply_authenticated_identity,
+	clear_authenticated_identity,
+)
+from flutter_utils.authentication.device import AUTHORIZATION_SOURCE, authenticate_device_credentials
+from flutter_utils.authentication.headers import parse_authorization_header
 
 
 def validate() -> None:
-	"""Authenticate Firebase and managed-device realtime authorization schemes."""
-	auth_type, _, id_token = frappe.get_request_header("Authorization", "").partition(" ")
-	if auth_type.lower() == "flutterdevice":
-		api_key, separator, api_secret = id_token.partition(":")
-		if not separator or not api_key or not api_secret or ":" in api_secret:
-			raise frappe.AuthenticationError
-		credential = frappe.db.get_value(
-			"Flutter Device Credential",
-			{"api_key": api_key, "enabled": 1},
-			["name", "user"],
-			as_dict=True,
-		)
-		if not credential or not frappe.db.get_value("User", credential.user, "enabled"):
-			raise frappe.AuthenticationError
-		secret = get_decrypted_password(
-			"Flutter Device Credential", credential.name, "api_secret", raise_exception=False
-		)
-		if not secret or not hmac.compare_digest(secret.encode(), api_secret.encode()):
-			raise frappe.AuthenticationError
-		form_dict = frappe.local.form_dict
-		frappe.set_user(credential.user)
-		frappe.local.form_dict = form_dict
+	"""Adapt supported authorization schemes to a verified request-local identity."""
+	clear_authenticated_identity()
+	authorization = parse_authorization_header()
+	if authorization.scheme == "flutterdevice":
+		apply_authenticated_identity(authenticate_device_credentials(authorization.credentials))
 		return
-	if auth_type.lower() != "firebase":
+	if authorization.scheme == "token":
+		if frappe.get_request_header("Frappe-Authorization-Source", "") == AUTHORIZATION_SOURCE:
+			# Native Frappe authentication runs first. Do not replace its user resolution.
+			identity = authenticate_device_credentials(authorization.credentials)
+			apply_authenticated_identity(identity, set_user=False)
 		return
-	if not id_token.strip():
+	if authorization.scheme != "firebase":
+		return
+	if not authorization.credentials.strip():
 		raise frappe.AuthenticationError
 
 	from flutter_utils.firebase_auth import resolve_firebase_user, verify_firebase_id_token
 
-	user = resolve_firebase_user(verify_firebase_id_token(id_token.strip()))
-	form_dict = frappe.local.form_dict
-	frappe.set_user(user.name)
-	frappe.local.form_dict = form_dict
+	user = resolve_firebase_user(verify_firebase_id_token(authorization.credentials.strip()))
+	apply_authenticated_identity(AuthenticatedIdentity(user=user.name, method="firebase"))

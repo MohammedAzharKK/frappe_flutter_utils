@@ -1,13 +1,14 @@
 import hashlib
-import hmac
 from typing import Any
 
 import frappe
 from frappe import _
 from frappe.utils import now_datetime
-from frappe.utils.password import get_decrypted_password, set_encrypted_password
+from frappe.utils.password import set_encrypted_password
 
-AUTHORIZATION_SOURCE = "Flutter Device Credential"
+from flutter_utils.authentication.context import require_current_device_credential
+from flutter_utils.authentication.device import AUTHORIZATION_SOURCE
+
 MAX_DEVICE_ID_LENGTH = 128
 MAX_DEVICE_NAME_LENGTH = 140
 
@@ -38,6 +39,9 @@ def issue_device_api_credentials(
 	api_secret = frappe.generate_hash(length=32)
 	now = now_datetime()
 	if existing:
+		from flutter_utils.realtime import disconnect_rotated_device_sockets
+
+		disconnect_rotated_device_sockets(existing.name)
 		credential = frappe.get_doc(AUTHORIZATION_SOURCE, existing.name)
 		credential.device_name = clean_device_name
 		credential.enabled = 1
@@ -102,31 +106,8 @@ def logout_current_device() -> dict[str, str]:
 
 
 def get_current_device_credential() -> str:
-	"""Resolve only the enabled credential belonging to the authenticated caller."""
-	if frappe.session.user == "Guest":
-		raise frappe.AuthenticationError
-	auth_source = frappe.get_request_header("Frappe-Authorization-Source", "")
-	if auth_source != AUTHORIZATION_SOURCE:
-		frappe.throw(_("This credential is not a managed device login."), frappe.AuthenticationError)
-
-	auth_type, separator, auth_token = frappe.get_request_header("Authorization", "").partition(" ")
-	if auth_type.lower() != "token" or not separator or ":" not in auth_token:
-		raise frappe.AuthenticationError
-	api_key, separator, api_secret = auth_token.partition(":")
-	credential_name = frappe.db.get_value(
-		AUTHORIZATION_SOURCE,
-		{"api_key": api_key, "enabled": 1, "user": frappe.session.user},
-		"name",
-	)
-	if not credential_name or not frappe.db.get_value("User", frappe.session.user, "enabled"):
-		raise frappe.AuthenticationError
-	expected = get_decrypted_password(
-		AUTHORIZATION_SOURCE, credential_name, "api_secret", raise_exception=False
-	)
-	if not api_secret or not expected or not hmac.compare_digest(expected.encode(), api_secret.encode()):
-		raise frappe.AuthenticationError
-
-	return str(credential_name)
+	"""Compatibility wrapper for logout and push registration consumers."""
+	return require_current_device_credential()
 
 
 def prune_device_credentials(maximum_devices: int) -> None:
@@ -164,6 +145,7 @@ def _revoke_for_available_slot(credentials: list[Any], maximum_devices: int) -> 
 
 def _revoke_credential(credential_name: str, reason: str) -> None:
 	from flutter_utils.push_notifications import deactivate_device_push
+	from flutter_utils.realtime import disconnect_device_sockets
 
 	frappe.db.get_value(AUTHORIZATION_SOURCE, credential_name, "name", for_update=True)
 	deactivate_device_push(credential_name)
@@ -177,6 +159,8 @@ def _revoke_credential(credential_name: str, reason: str) -> None:
 		},
 		update_modified=False,
 	)
+	api_key = frappe.db.get_value(AUTHORIZATION_SOURCE, credential_name, "api_key")
+	disconnect_device_sockets(api_key)
 
 
 def _build_device_key(user: str, device_id_hash: str) -> str:
