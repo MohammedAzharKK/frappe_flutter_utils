@@ -359,9 +359,9 @@
    "label": "Auto-create Website Users"
   },
   {
-   "default": "1",
+   "default": "0",
    "depends_on": "eval:doc.enable_firebase_auth",
-   "description": "Check Firebase account revocation and disabled status during login. This requires a Firebase network request.",
+   "description": "Disabled by default: Frappe controls account enabled status. Enable to also check Firebase token revocation and account disabled status, requiring an extra Firebase network request. Token signature and expiry are always verified.",
    "fieldname": "firebase_check_revoked_tokens",
    "fieldtype": "Check",
    "label": "Check Revoked Tokens"

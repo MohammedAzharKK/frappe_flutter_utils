@@ -30,7 +30,7 @@ class TestFirebaseTokenVerification(FrappeTestCase):
 				"enable_firebase_auth": 1,
 				"enable_firebase_phone_auth": 1,
 				"enable_firebase_google_auth": 1,
-				"firebase_check_revoked_tokens": 1,
+				"firebase_check_revoked_tokens": 0,
 				"firebase_project_id": "test-project",
 			}
 		)
@@ -57,8 +57,27 @@ class TestFirebaseTokenVerification(FrappeTestCase):
 		verify_token.assert_called_once_with(
 			"firebase-token",
 			app=firebase_app,
-			check_revoked=True,
+			check_revoked=False,
 		)
+
+	def test_checks_revocation_when_explicitly_enabled(self) -> None:
+		self.settings.firebase_check_revoked_tokens = 1
+		firebase_app = MagicMock()
+		claims = {
+			"aud": "test-project",
+			"uid": "google-uid",
+			"email": "user@example.com",
+			"email_verified": True,
+			"firebase": {"sign_in_provider": "google.com"},
+		}
+		with (
+			patch("flutter_utils.firebase_auth._get_enabled_firebase_settings", return_value=self.settings),
+			patch("flutter_utils.firebase_auth.get_firebase_app", return_value=firebase_app),
+			patch("flutter_utils.firebase_auth.auth.verify_id_token", return_value=claims) as verify_token,
+		):
+			verify_firebase_id_token("firebase-token")
+
+		verify_token.assert_called_once_with("firebase-token", app=firebase_app, check_revoked=True)
 
 	def test_rejects_disabled_phone_provider(self) -> None:
 		self.settings.enable_firebase_phone_auth = 0
