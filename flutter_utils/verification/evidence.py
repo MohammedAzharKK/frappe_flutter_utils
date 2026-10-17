@@ -12,7 +12,12 @@ from frappe import _
 from frappe.utils import cint, now_datetime
 from frappe.utils.verified_command import get_signed_params
 
-from flutter_utils.verification.media import SUPPORTED_EXTENSIONS, validate_mp4
+from flutter_utils.verification.media import (
+	SUPPORTED_EXTENSIONS,
+	VIDEO_EXTENSIONS,
+	matches_signature,
+	validate_mp4,
+)
 
 
 def get_max_file_size() -> int:
@@ -21,25 +26,30 @@ def get_max_file_size() -> int:
 	return frappe_max_file_size()
 
 
-def check_content(filename: str, content: bytes, config: Any) -> None:
+def _fail(label: str | None, message: str) -> None:
+	"""Raise a validation error prefixed with the failing document, when known."""
+	frappe.throw(f"{label}: {message}" if label else message)
+
+
+def check_content(filename: str, content: bytes, config: Any, label: str | None = None) -> None:
 	extension = PurePath(filename).suffix.lower().lstrip(".")
+	display = PurePath(filename or "").name or (extension.upper() or "file")
 	allowed = {value.strip().lower().lstrip(".") for value in (config.allowed_extensions or "").splitlines()}
 	if extension not in allowed or extension not in SUPPORTED_EXTENSIONS:
-		frappe.throw(_("Unsupported evidence file format."))
+		_fail(label, _("'{0}' is not an accepted file format.").format(display))
 	if not content or len(content) > min(cint(config.max_file_size_mb) * 1024 * 1024, get_max_file_size()):
-		frappe.throw(_("Evidence is empty or exceeds the upload limit."))
-	if extension == "mp4":
-		validate_mp4(content)
+		_fail(label, _("'{0}' is empty or exceeds the upload limit.").format(display))
+	if extension in VIDEO_EXTENSIONS:
+		validate_mp4(content, label or "")
 		return
 	# Do not trust the filename or client MIME type. Only inert document/image formats.
-	signatures = {
-		"pdf": b"%PDF-",
-		"png": b"\x89PNG\r\n\x1a\n",
-		"jpg": b"\xff\xd8\xff",
-		"jpeg": b"\xff\xd8\xff",
-	}
-	if not content.startswith(signatures[extension]):
-		frappe.throw(_("Evidence content does not match its file format."))
+	if not matches_signature(extension, content):
+		_fail(
+			label,
+			_(
+				"'{0}' does not look like a real {1} file. It may be HEIC or mislabeled; choose another file."
+			).format(display, extension.upper()),
+		)
 
 
 @contextmanager
@@ -76,7 +86,7 @@ def add_evidence(doc: Any, uploads: list[tuple[Any, str]]) -> None:
 		limit = min(cint(config.max_file_size_mb) * 1024 * 1024, get_max_file_size())
 		content = upload.stream.read(limit + 1)
 		filename = PurePath(upload.filename or "").name
-		check_content(filename, content, config)
+		check_content(filename, content, config, doc.document_type)
 		file = frappe.get_doc(
 			{
 				"doctype": "File",

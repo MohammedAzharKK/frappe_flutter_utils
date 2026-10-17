@@ -14,7 +14,7 @@ def box(kind: bytes, payload: bytes) -> bytes:
 	return (len(payload) + 8).to_bytes(4, "big") + kind + payload
 
 
-def video_sample(handler: bytes = b"vide", codec: bytes = b"avc1") -> bytes:
+def video_sample(handler: bytes = b"vide", codec: bytes = b"avc1", brand: bytes = b"isom") -> bytes:
 	entry = bytearray(78)
 	entry[24:26] = (16).to_bytes(2, "big")
 	entry[26:28] = (16).to_bytes(2, "big")
@@ -25,7 +25,7 @@ def video_sample(handler: bytes = b"vide", codec: bytes = b"avc1") -> bytes:
 			b"mdia", box(b"hdlr", b"\0" * 8 + handler + b"\0" * 12) + box(b"minf", box(b"stbl", description))
 		),
 	)
-	return box(b"ftyp", b"isom\0\0\0\0mp42") + box(b"moov", track) + box(b"mdat", b"sample")
+	return box(b"ftyp", brand + b"\0\0\0\0mp42") + box(b"moov", track) + box(b"mdat", b"sample")
 
 
 def throw(message: str, exc: type[Exception] = frappe.ValidationError, **kwargs: object) -> None:
@@ -69,6 +69,42 @@ class VerificationMediaTests(TestCase):
 			evidence.check_content(
 				"intro.mp4", video_sample(), frappe._dict(allowed_extensions="mp4", max_file_size_mb=10)
 			)
+
+	def test_widened_image_and_document_formats_supported(self) -> None:
+		samples = {
+			"png": b"\x89PNG\r\n\x1a\n" + b"x",
+			"jpg": b"\xff\xd8\xff\xe0" + b"x",
+			"jpeg": b"\xff\xd8\xff\xe0" + b"x",
+			"webp": b"RIFF" + (4).to_bytes(4, "little") + b"WEBP" + b"x",
+			"gif": b"GIF89a" + b"x",
+			"bmp": b"BM" + b"x",
+			"pdf": b"%PDF-1.4\n%%EOF",
+		}
+		for extension, content in samples.items():
+			config = frappe._dict(allowed_extensions=extension, max_file_size_mb=10)
+			with self.subTest(extension=extension):
+				evidence.check_content(f"id.{extension}", content, config)
+
+	def test_iso_bmff_container_variants_supported(self) -> None:
+		for extension, brand in (
+			("mp4", b"isom"),
+			("m4v", b"M4V "),
+			("mov", b"qt  "),
+			("3gp", b"3gp4"),
+			("3g2", b"3g2a"),
+		):
+			config = frappe._dict(allowed_extensions=extension, max_file_size_mb=10)
+			with self.subTest(extension=extension):
+				evidence.check_content(f"intro.{extension}", video_sample(brand=brand), config)
+
+	def test_mislabeled_file_raises_document_named_error(self) -> None:
+		config = frappe._dict(allowed_extensions="jpg\npng\nwebp", max_file_size_mb=10)
+		webp = b"RIFF" + (4).to_bytes(4, "little") + b"WEBP" + b"x"
+		with self.assertRaises(frappe.ValidationError) as caught:
+			evidence.check_content("selfie.jpg", webp, config, "Listener Profile Photo")
+		self.assertIn("Listener Profile Photo", str(caught.exception))
+		with self.assertRaises(frappe.ValidationError):
+			evidence.check_content("id.txt", b"hello", config, "Listener Identity")
 
 	def test_private_import_rejects_foreign_public_and_attached_files_before_open(self) -> None:
 		for values in ({"owner": "other"}, {"is_private": 0}, {"attached_to_name": "already-attached"}):
