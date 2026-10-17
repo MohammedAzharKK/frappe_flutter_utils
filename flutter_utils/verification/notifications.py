@@ -58,6 +58,21 @@ def message_for(doc: Any, action: str, reason: str | None, reviewer: bool = Fals
 	return subject, " ".join(parts)
 
 
+def _push_copy(doc: Any, event: Any) -> tuple[str, str]:
+	"""Action-first push copy that never leaks the document title.
+
+	Push content is visible on the lock screen, so it names the action and the
+	next step instead of the evidence title. The full detail stays in the
+	Notification Log and the in-app list.
+	"""
+	label = "Verification request" if doc.doctype == "Verification Request" else "Verification document"
+	title = f"{label} {str(event.action).lower()}"
+	body = NEXT_STEPS.get(event.action, "Open the app to view your verification update.")
+	if event.reason:
+		body = f"{body} Reason: {event.reason}"
+	return title[:120], body[:300]
+
+
 def record_event(doc: Any, action: str, before: str | None, reason: str | None = None) -> Any:
 	policy = get_policy(doc.source_app)
 	key = hashlib.sha256(f"{doc.doctype}:{doc.name}:{doc.document_revision}:{action}".encode()).hexdigest()
@@ -187,12 +202,21 @@ def deliver(name: str) -> None:
 			elif delivery.channel == "Push":
 				from flutter_utils.push_notifications import send_push_notifications
 
+				push_title, push_body = _push_copy(doc, event)
 				sent = send_push_notifications(
 					[delivery.recipient],
-					"Verification update",
-					"Open the app to view your verification update.",
+					push_title,
+					push_body,
 					app=delivery.push_app,
-					data={"event": event.name, "record": doc.name, "doctype": doc.doctype},
+					# `type` lets the mobile client tell verification pushes apart
+					# from call pushes and route the tap to the KYC screen.
+					data={
+						"type": "verification",
+						"action": event.action,
+						"event": event.name,
+						"record": doc.name,
+						"doctype": doc.doctype,
+					},
 					strict=True,
 				)
 				if not sent:

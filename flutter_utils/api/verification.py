@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import hmac
 from typing import Any
 
 import frappe
 from frappe import _
 from frappe.utils import cint
+from frappe.utils.verified_command import _sign_message
 
 from flutter_utils.verification import service
 from flutter_utils.verification.evidence import current_rows, evidence_urls, get_max_file_size
@@ -408,17 +410,51 @@ def get_evidence_history(document_id: str, offset: int = 0, page_size: int = 20)
 	]
 
 
-@frappe.whitelist()
+def _has_valid_signature() -> bool:
+	"""True when the request carries a valid signed-params signature.
+
+	Mirrors ``verify_request`` but never renders a response page, so an unsigned
+	request can still fall back to credential/session authentication (the admin
+	console).
+	"""
+	request = frappe.request
+	if not request or request.method != "GET" or request.form or request.data:
+		return False
+	flags = getattr(frappe.local, "flags", None)
+	signed_query = getattr(flags, "signed_query_string", None) if flags else None
+	query = frappe.safe_decode(signed_query or getattr(request, "query_string", None) or "")
+	marker = "&_signature="
+	if marker not in query:
+		return False
+	params, given = query.split(marker, 1)
+	return hmac.compare_digest(given, _sign_message(params))
+
+
+@frappe.whitelist(allow_guest=True)
 def download_evidence(file_id: str) -> None:
-	_authenticated()
+	"""Serve one evidence file from a signed link or an authenticated session.
+
+	The app (``Image.network``, the video player) and the phone browser fetch a
+	signed URL without a session cookie, so a valid HMAC signature (minted only
+	for readers who already passed the policy check in ``serialize``) authorizes
+	them. The admin console fetches the same method with its device credentials,
+	so a logged-in owner/reviewer is authorized by the subject read policy.
+
+	Served inline with the real mimetype so images, videos and PDFs preview.
+	"""
+	signed = _has_valid_signature()
+	if not signed:
+		_authenticated()
 	file = frappe.get_doc("File", file_id)
 	if not file.is_private or file.attached_to_doctype != "Verification Document":
 		frappe.throw(_("Not verification evidence."), frappe.PermissionError)
-	doc = _get("Verification Document", file.attached_to_name)
+	if not signed:
+		# Credential/session callers must still pass the subject read policy.
+		_get("Verification Document", file.attached_to_name)
 	if not frappe.db.exists(
 		"Verification Document File",
 		{
-			"parent": doc.name,
+			"parent": file.attached_to_name,
 			"parenttype": "Verification Document",
 			"parentfield": "files",
 			"file": file.name,
@@ -428,3 +464,4 @@ def download_evidence(file_id: str) -> None:
 	frappe.local.response.filename = file.file_name
 	frappe.local.response.filecontent = file.get_content()
 	frappe.local.response.type = "download"
+	frappe.local.response.display_content_as = "inline"

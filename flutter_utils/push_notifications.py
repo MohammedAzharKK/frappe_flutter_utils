@@ -13,6 +13,12 @@ from flutter_utils.device_credentials import AUTHORIZATION_SOURCE, get_current_d
 REGISTRATION_DOCTYPE = AUTHORIZATION_SOURCE
 VALID_PLATFORMS = {"android", "ios", "web", "macos", "windows", "linux"}
 
+# The app creates this high-importance channel at startup. Android 8+ only
+# shows a heads-up tray notification when FCM targets an existing channel, so
+# every message names it explicitly instead of the low-importance fallback.
+ANDROID_CHANNEL_ID = "sync_updates_v2"
+ANDROID_ICON = "ic_launcher"
+
 
 def _token_hash(token: str) -> str:
 	return hashlib.sha256(token.encode()).hexdigest()
@@ -137,6 +143,22 @@ def send_push_notifications(
 			result = messaging.send_each_for_multicast(
 				messaging.MulticastMessage(
 					notification=messaging.Notification(title=title, body=body),
+					android=messaging.AndroidConfig(
+						priority="high",
+						notification=messaging.AndroidNotification(
+							title=title,
+							body=body,
+							channel_id=ANDROID_CHANNEL_ID,
+							icon=ANDROID_ICON,
+							default_sound=True,
+							default_vibrate_timings=True,
+						),
+					),
+					apns=messaging.APNSConfig(
+						payload=messaging.APNSPayload(
+							aps=messaging.Aps(sound="default", badge=1),
+						),
+					),
 					data={str(key): str(value) for key, value in (data or {}).items()},
 					tokens=[row.fcm_token for row in batch],
 				),

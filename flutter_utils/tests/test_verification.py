@@ -724,6 +724,10 @@ class TestVerification(TestCase):
 		for name, function in inspect.getmembers(api, inspect.isfunction):
 			if name.startswith("_") or function.__module__ != api.__name__:
 				continue
+			# download_evidence is a signed-link endpoint: a guest reaches it only
+			# through the HMAC signature, which is asserted separately.
+			if name == "download_evidence":
+				continue
 			args = {
 				param: ("Verification Document" if param == "record_doctype" else "placeholder")
 				for param, info in inspect.signature(function).parameters.items()
@@ -798,20 +802,87 @@ class TestVerification(TestCase):
 		with self.assertRaises(frappe.ValidationError):
 			api._data("[]")
 
-	def test_api_download_requires_subject_access_and_linked_file(self) -> None:
+	def _downloadable_file(self) -> Any:
 		doc = self.create()
 		file = self.db.get_doc("File", doc.primary_file)
 		file.get_content = lambda: b"private evidence"
-		with patch(
+		self.local.response = frappe._dict()
+		return file
+
+	def _serve_from_file(self, file: Any) -> Any:
+		return patch(
 			"frappe.get_doc",
 			side_effect=lambda kind, name=None: file if kind == "File" else self.db.get_doc(kind, name),
-		):
-			self.local.response = frappe._dict()
+		)
+
+	def test_signature_helper_accepts_only_a_valid_signature(self) -> None:
+		with patch.object(api, "_sign_message", side_effect=lambda params: f"sig:{params}"):
+			self.local.flags = frappe._dict()
+
+			def request(method: str, query: bytes) -> Any:
+				return SimpleNamespace(method=method, query_string=query, form={}, data=None)
+
+			with patch(
+				"frappe.request", request("GET", b"file_id=abc&_signature=sig:file_id=abc")
+			):
+				self.assertTrue(api._has_valid_signature())
+			with patch("frappe.request", request("GET", b"file_id=abc&_signature=deadbeef")):
+				self.assertFalse(api._has_valid_signature())
+			with patch(
+				"frappe.request", request("POST", b"file_id=abc&_signature=sig:file_id=abc")
+			):
+				self.assertFalse(api._has_valid_signature())
+
+	def test_api_download_serves_inline_for_authenticated_session(self) -> None:
+		# The admin console calls the method with device credentials (no
+		# signature); a logged-in owner/reviewer is authorized by the policy.
+		file = self._downloadable_file()
+		with self._serve_from_file(file):
 			api.download_evidence(file.name)
-			self.assertEqual(self.local.response.filecontent, b"private evidence")
-			self.session.user = "other"
-			with self.assertRaises(frappe.PermissionError):
-				api.download_evidence(file.name)
+		self.assertEqual(self.local.response.filecontent, b"private evidence")
+		# Inline so the app/console can preview, not force a download.
+		self.assertEqual(self.local.response.display_content_as, "inline")
+
+	def test_api_download_serves_inline_for_a_signed_link(self) -> None:
+		# The app fetches a signed URL with no session; the signature authorizes.
+		file = self._downloadable_file()
+		self.session.user = "Guest"
+		with (
+			patch.object(api, "_has_valid_signature", return_value=True),
+			self._serve_from_file(file),
+		):
+			api.download_evidence(file.name)
+		self.assertEqual(self.local.response.filecontent, b"private evidence")
+
+	def test_api_download_rejects_unsigned_and_unlinked_files(self) -> None:
+		file = self._downloadable_file()
+		# Unsigned guest: no session and no signature.
+		self.session.user = "Guest"
+		with (
+			patch.object(api, "_has_valid_signature", return_value=False),
+			self.assertRaises(frappe.AuthenticationError),
+		):
+			api.download_evidence(file.name)
+		# Unsigned session without subject read access is denied.
+		self.session.user = "other"
+		with (
+			self._serve_from_file(file),
+			patch.object(api, "_has_valid_signature", return_value=False),
+			self.assertRaises(frappe.PermissionError),
+		):
+			api.download_evidence(file.name)
+		# Even a valid signature cannot fetch a file that is not linked evidence.
+		self.session.user = "alice"
+		with (
+			self._serve_from_file(file),
+			patch.object(api, "_has_valid_signature", return_value=True),
+			patch(
+				"frappe.db.exists",
+				side_effect=lambda doctype, filters=None, *a, **k: doctype != "Verification Document File",
+			),
+			self.assertRaises(frappe.PermissionError),
+		):
+			api.download_evidence(file.name)
 
 	def test_push_delivery_is_app_scoped_private_and_retryable(self) -> None:
 		with patch.object(CustomSubjectPolicy, "push_app", "custom-mobile"):
@@ -829,6 +900,11 @@ class TestVerification(TestCase):
 			self.assertEqual(send.call_args.kwargs["app"], "custom-mobile")
 			self.assertTrue(send.call_args.kwargs["strict"])
 			self.assertNotIn("Identity", send.call_args.args[2])
+			# The client needs `type` to distinguish verification from call pushes
+			# and to route the tap into the KYC screen.
+			self.assertEqual(send.call_args.kwargs["data"]["type"], "verification")
+			self.assertIn("submitted", send.call_args.args[1].lower())
+			self.assertNotIn("Identity", send.call_args.args[1])
 		self.assertEqual(self.db.get_doc(delivery.doctype, delivery.name).status, "Failed")
 
 	def test_email_is_separate_policy_controlled_delivery(self) -> None:

@@ -57,6 +57,8 @@
   "email_and_sms_tab",
   "banner_settings_section",
   "default_banner_slideshow",
+  "member_banner_slideshow",
+  "listener_banner_slideshow",
   "email_section",
   "email_otp_subject_template",
   "email_otp_body_template",
@@ -402,6 +404,20 @@
    "fieldname": "default_banner_slideshow",
    "fieldtype": "Link",
    "label": "Default Banner Slideshow",
+   "options": "Website Slideshow"
+  },
+  {
+   "description": "Slideshow shown to members. Falls back to the default when empty.",
+   "fieldname": "member_banner_slideshow",
+   "fieldtype": "Link",
+   "label": "Member Banner Slideshow",
+   "options": "Website Slideshow"
+  },
+  {
+   "description": "Slideshow shown to listeners. Falls back to the default when empty.",
+   "fieldname": "listener_banner_slideshow",
+   "fieldtype": "Link",
+   "label": "Listener Banner Slideshow",
    "options": "Website Slideshow"
   },
   {

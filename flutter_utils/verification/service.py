@@ -283,12 +283,20 @@ def validate_document_metadata(doc: Any) -> None:
 			or file.attached_to_name != doc.name
 			or file.attached_to_doctype != doc.doctype
 		):
-			frappe.throw(_("Current evidence is missing or does not belong to this document."))
+			frappe.throw(
+				_("Current evidence for {0} is missing or does not belong to this document.").format(
+					doc.document_type
+				)
+			)
 		if (
 			row.evidence_role not in roles
 			or PurePath(file.file_name).suffix.lower().lstrip(".") not in extensions
 		):
-			frappe.throw(_("Existing evidence does not match the document type requirements."))
+			frappe.throw(
+				_("Existing evidence for {0} does not match the document type requirements.").format(
+					doc.document_type
+				)
+			)
 		if cint(file.file_size) > limit:
 			frappe.throw(_("Existing evidence exceeds the document type upload limit."))
 	policy.validate_document(doc)
