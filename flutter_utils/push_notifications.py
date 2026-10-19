@@ -13,6 +13,12 @@ from flutter_utils.device_credentials import AUTHORIZATION_SOURCE, get_current_d
 REGISTRATION_DOCTYPE = AUTHORIZATION_SOURCE
 VALID_PLATFORMS = {"android", "ios", "web", "macos", "windows", "linux"}
 
+# The app creates this high-importance channel at startup. Android 8+ only
+# shows a heads-up tray notification when FCM targets an existing channel, so
+# every message names it explicitly instead of the low-importance fallback.
+ANDROID_CHANNEL_ID = "sync_updates_v2"
+ANDROID_ICON = "ic_launcher"
+
 
 def _token_hash(token: str) -> str:
 	return hashlib.sha256(token.encode()).hexdigest()
@@ -105,16 +111,17 @@ def send_push_notifications(
 	body: str,
 	app: str | None = None,
 	data: dict[str, str] | None = None,
-) -> None:
+	strict: bool = False,
+) -> bool | None:
 	"""Worker-only delivery; FCM failures never affect the originating transaction."""
 	if not users:
-		return
+		return False if strict else None
 	settings = frappe.get_single("Flutter Utils Settings")
 	if not settings.get("enable_firebase_push") or not users:
-		return
+		return False if strict else None
 	enabled_users = frappe.get_all("User", filters={"name": ["in", users], "enabled": 1}, pluck="name")
 	if not enabled_users:
-		return
+		return False if strict else None
 	filters: dict[str, Any] = {"user": ["in", enabled_users], "enabled": 1, "push_enabled": 1}
 	if app:
 		filters["app"] = app
@@ -123,18 +130,35 @@ def send_push_notifications(
 	)
 	rows = [row for row in rows if row.fcm_token]
 	if not rows:
-		return
+		return False if strict else None
 	try:
 		from firebase_admin import messaging
 
 		from flutter_utils.firebase import get_firebase_app
 
 		firebase_app = get_firebase_app(settings)
+		failed = False
 		for offset in range(0, len(rows), 500):
 			batch = rows[offset : offset + 500]
 			result = messaging.send_each_for_multicast(
 				messaging.MulticastMessage(
 					notification=messaging.Notification(title=title, body=body),
+					android=messaging.AndroidConfig(
+						priority="high",
+						notification=messaging.AndroidNotification(
+							title=title,
+							body=body,
+							channel_id=ANDROID_CHANNEL_ID,
+							icon=ANDROID_ICON,
+							default_sound=True,
+							default_vibrate_timings=True,
+						),
+					),
+					apns=messaging.APNSConfig(
+						payload=messaging.APNSPayload(
+							aps=messaging.Aps(sound="default", badge=1),
+						),
+					),
 					data={str(key): str(value) for key, value in (data or {}).items()},
 					tokens=[row.fcm_token for row in batch],
 				),
@@ -156,12 +180,18 @@ def send_push_notifications(
 						update_modified=False,
 					)
 				else:
+					failed = True
 					frappe.log_error(
 						title="Firebase Push Delivery Failed",
 						message="FCM rejected a delivery. Check Firebase project configuration.",
 					)
+		if strict and failed:
+			raise RuntimeError("PushDeliveryFailed")
+		return True if strict else None
 	except Exception as exc:
 		frappe.log_error(
 			title="Firebase Push Delivery Failed",
 			message=f"FCM delivery failed ({type(exc).__name__}). Check Firebase settings and connectivity.",
 		)
+		if strict:
+			raise RuntimeError("PushDeliveryFailed") from exc

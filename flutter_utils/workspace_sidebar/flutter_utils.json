@@ -1,0 +1,60 @@
+{
+ "doctype": "Workspace Sidebar",
+ "name": "Flutter Utils",
+ "title": "Flutter Utils",
+ "module": "Flutter Utils",
+ "app": "flutter_utils",
+ "header_icon": "smartphone",
+ "standard": 1,
+ "items": [
+  {
+   "type": "Link",
+   "label": "Flutter Utils Settings",
+   "link_type": "DocType",
+   "link_to": "Flutter Utils Settings",
+   "icon": "settings",
+   "indent": 0,
+   "collapsible": 1
+  },
+  {
+   "type": "Link",
+   "label": "Device Credentials",
+   "link_type": "DocType",
+   "link_to": "Flutter Device Credential",
+   "icon": "smartphone",
+   "indent": 0,
+   "collapsible": 1
+  },
+  {
+   "type": "Link",
+   "label": "Verification Requests",
+   "link_type": "DocType",
+   "link_to": "Verification Request",
+   "icon": "file-text",
+   "indent": 0,
+   "collapsible": 1
+  },
+  {
+   "type": "Link",
+   "label": "Verification Documents",
+   "link_type": "DocType",
+   "link_to": "Verification Document",
+   "icon": "shield",
+   "indent": 0,
+   "collapsible": 1
+  },
+  {
+   "type": "Link",
+   "label": "Firebase Auth Identities",
+   "link_type": "DocType",
+   "link_to": "Firebase Auth Identity",
+   "icon": "user",
+   "indent": 0,
+   "collapsible": 1
+  }
+ ],
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "creation": "2026-10-07 09:00:00.000000",
+ "modified": "2026-10-07 09:00:00.000000"
+}

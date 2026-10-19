@@ -1,0 +1,39 @@
+{
+ "doctype": "DocType", "name": "Verification Request", "module": "Flutter Utils",
+ "autoname": "hash", "engine": "InnoDB", "track_changes": 1, "title_field": "title",
+ "field_order": ["title", "description", "reference_doctype", "reference_name", "source_app", "verification_purpose", "contact_user", "tenant_doctype", "tenant_name", "document_revision", "submitted_by", "submitted_at", "last_resubmitted_at", "submission_count", "approval_status", "rejection_code", "rejection_reason", "reviewed_by", "reviewed_at", "review_notes", "assigned_reviewer", "is_withdrawn", "withdrawn_at", "is_archived", "archived_at", "retention_until", "idempotency_key"],
+ "fields": [
+  {"fieldname": "title", "label": "Title", "fieldtype": "Data", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "description", "label": "Applicant Notes", "fieldtype": "Small Text"},
+  {"fieldname": "reference_doctype", "label": "Subject DocType", "fieldtype": "Link", "options": "DocType", "reqd": 1},
+  {"fieldname": "reference_name", "label": "Subject", "fieldtype": "Dynamic Link", "options": "reference_doctype", "reqd": 1},
+  {"fieldname": "source_app", "label": "Integration", "fieldtype": "Data", "reqd": 1, "default": "flutter_utils"},
+  {"fieldname": "verification_purpose", "label": "Purpose", "fieldtype": "Data", "reqd": 1, "default": "KYC"},
+  {"fieldname": "contact_user", "label": "Responsible Contact", "fieldtype": "Link", "options": "User"},
+  {"fieldname": "tenant_doctype", "label": "Tenant DocType", "fieldtype": "Link", "options": "DocType", "read_only": 1},
+  {"fieldname": "tenant_name", "label": "Tenant", "fieldtype": "Dynamic Link", "options": "tenant_doctype", "read_only": 1},
+  {"fieldname": "document_revision", "label": "Revision", "fieldtype": "Int", "default": "1", "read_only": 1},
+  {"fieldname": "submitted_by", "label": "Submitted By", "fieldtype": "Link", "options": "User", "read_only": 1},
+  {"fieldname": "submitted_at", "label": "Submitted At", "fieldtype": "Datetime", "read_only": 1},
+  {"fieldname": "last_resubmitted_at", "label": "Last Resubmitted At", "fieldtype": "Datetime", "read_only": 1},
+  {"fieldname": "submission_count", "label": "Submission Count", "fieldtype": "Int", "read_only": 1},
+  {"fieldname": "approval_status", "label": "Approval", "fieldtype": "Select", "options": "Pending\nApproved\nRejected", "default": "Pending", "read_only": 1, "in_list_view": 1},
+  {"fieldname": "rejection_code", "label": "Rejection Code", "fieldtype": "Data", "read_only": 1},
+  {"fieldname": "rejection_reason", "label": "Rejection Reason", "fieldtype": "Small Text", "read_only": 1},
+  {"fieldname": "reviewed_by", "label": "Reviewed By", "fieldtype": "Link", "options": "User", "read_only": 1},
+  {"fieldname": "reviewed_at", "label": "Reviewed At", "fieldtype": "Datetime", "read_only": 1},
+  {"fieldname": "review_notes", "label": "Confidential Review Notes", "fieldtype": "Small Text", "read_only": 1, "permlevel": 1},
+  {"fieldname": "assigned_reviewer", "label": "Assigned Reviewer", "fieldtype": "Link", "options": "User", "read_only": 1},
+  {"fieldname": "is_withdrawn", "label": "Withdrawn", "fieldtype": "Check", "read_only": 1},
+  {"fieldname": "withdrawn_at", "label": "Withdrawn At", "fieldtype": "Datetime", "read_only": 1},
+  {"fieldname": "is_archived", "label": "Archived", "fieldtype": "Check", "read_only": 1},
+  {"fieldname": "archived_at", "label": "Archived At", "fieldtype": "Datetime", "read_only": 1},
+  {"fieldname": "retention_until", "label": "Retention Until", "fieldtype": "Date", "read_only": 1},
+  {"fieldname": "idempotency_key", "label": "Creation Key", "fieldtype": "Data", "unique": 1, "hidden": 1, "read_only": 1}
+ ],
+ "permissions": [
+  {"role": "System Manager", "read": 1}, {"role": "Verification Reviewer", "read": 1},
+  {"role": "System Manager", "permlevel": 1, "read": 1},
+  {"role": "Verification Reviewer", "permlevel": 1, "read": 1}
+ ]
+}

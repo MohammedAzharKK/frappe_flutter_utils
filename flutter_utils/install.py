@@ -11,6 +11,9 @@ def after_install():
 	create_default_otp_template()
 	remove_user_workspace_sidebar_fields()
 	merge_push_registration()
+	from flutter_utils.verification.setup import seed_defaults
+
+	seed_defaults()
 
 
 def create_default_otp_template():

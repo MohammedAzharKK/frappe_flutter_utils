@@ -1,0 +1,18 @@
+{
+ "doctype": "Desktop Icon",
+ "name": "Flutter Utils",
+ "label": "Flutter Utils",
+ "app": "flutter_utils",
+ "icon_type": "Link",
+ "link_type": "Workspace Sidebar",
+ "link_to": "Flutter Utils",
+ "sidebar": "Flutter Utils",
+ "bg_color": "gray",
+ "hidden": 0,
+ "standard": 1,
+ "roles": [{"role": "System Manager"}],
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "creation": "2026-10-07 09:00:00.000000",
+ "modified": "2026-10-07 09:00:00.000000"
+}

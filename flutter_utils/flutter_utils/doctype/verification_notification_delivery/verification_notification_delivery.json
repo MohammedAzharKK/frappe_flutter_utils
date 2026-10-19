@@ -1,0 +1,19 @@
+{
+ "doctype": "DocType", "name": "Verification Notification Delivery", "module": "Flutter Utils", "autoname": "hash", "engine": "InnoDB",
+ "field_order": ["event", "recipient", "channel", "delivery_key", "status", "attempts", "next_attempt_at", "last_error", "subject", "message", "link", "push_app", "notification_log"],
+ "fields": [
+  {"fieldname": "event", "label": "Event", "fieldtype": "Link", "options": "Verification Review Log", "reqd": 1},
+  {"fieldname": "recipient", "label": "Recipient", "fieldtype": "Link", "options": "User", "reqd": 1},
+  {"fieldname": "channel", "label": "Channel", "fieldtype": "Select", "options": "In App\nPush\nEmail", "reqd": 1},
+  {"fieldname": "delivery_key", "label": "Delivery Key", "fieldtype": "Data", "unique": 1, "reqd": 1},
+  {"fieldname": "status", "label": "Status", "fieldtype": "Select", "options": "Pending\nDelivered\nFailed\nSkipped", "default": "Pending"},
+  {"fieldname": "attempts", "label": "Attempts", "fieldtype": "Int", "default": "0"},
+  {"fieldname": "next_attempt_at", "label": "Next Attempt At", "fieldtype": "Datetime"},
+  {"fieldname": "last_error", "label": "Last Error Code", "fieldtype": "Data"},
+  {"fieldname": "subject", "label": "Title", "fieldtype": "Data", "reqd": 1},
+  {"fieldname": "message", "label": "Description", "fieldtype": "Text", "reqd": 1},
+  {"fieldname": "link", "label": "Client Link", "fieldtype": "Small Text"},
+  {"fieldname": "push_app", "label": "Push Client", "fieldtype": "Data"},
+  {"fieldname": "notification_log", "label": "Notification Log", "fieldtype": "Link", "options": "Notification Log"}
+ ], "permissions": []
+}

@@ -1,0 +1,22 @@
+{
+ "doctype": "DocType", "name": "Verification Review Log", "module": "Flutter Utils", "autoname": "hash", "engine": "InnoDB",
+ "field_order": ["record_doctype", "record_name", "reference_doctype", "reference_name", "source_app", "verification_purpose", "action", "revision", "status_before", "status_after", "actor", "occurred_at", "reason", "review_notes", "notification_state", "deduplication_key"],
+ "fields": [
+  {"fieldname": "record_doctype", "label": "Record DocType", "fieldtype": "Link", "options": "DocType", "reqd": 1},
+  {"fieldname": "record_name", "label": "Record", "fieldtype": "Dynamic Link", "options": "record_doctype", "reqd": 1},
+  {"fieldname": "reference_doctype", "label": "Subject DocType", "fieldtype": "Link", "options": "DocType", "reqd": 1},
+  {"fieldname": "reference_name", "label": "Subject", "fieldtype": "Dynamic Link", "options": "reference_doctype", "reqd": 1},
+  {"fieldname": "source_app", "label": "Integration", "fieldtype": "Data", "reqd": 1},
+  {"fieldname": "verification_purpose", "label": "Purpose", "fieldtype": "Data", "reqd": 1},
+  {"fieldname": "action", "label": "Action", "fieldtype": "Data", "reqd": 1},
+  {"fieldname": "revision", "label": "Revision", "fieldtype": "Int", "reqd": 1},
+  {"fieldname": "status_before", "label": "Previous Status", "fieldtype": "Data"},
+  {"fieldname": "status_after", "label": "New Status", "fieldtype": "Data"},
+  {"fieldname": "actor", "label": "Actor", "fieldtype": "Link", "options": "User", "reqd": 1},
+  {"fieldname": "occurred_at", "label": "Occurred At", "fieldtype": "Datetime", "reqd": 1},
+  {"fieldname": "reason", "label": "Reason", "fieldtype": "Small Text"},
+  {"fieldname": "review_notes", "label": "Confidential Review Notes", "fieldtype": "Small Text"},
+  {"fieldname": "notification_state", "label": "Recipient Resolution", "fieldtype": "Data"},
+  {"fieldname": "deduplication_key", "label": "Event Key", "fieldtype": "Data", "unique": 1, "reqd": 1}
+ ], "permissions": []
+}

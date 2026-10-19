@@ -32,6 +32,7 @@ before_request = ["flutter_utils.utils.patch_exception_handler"]
 
 # before_install = "flutter_utils.install.before_install"
 after_install = "flutter_utils.install.after_install"
+after_migrate = "flutter_utils.verification.setup.seed_defaults"
 
 # Uninstallation
 # ------------
@@ -44,6 +45,39 @@ after_install = "flutter_utils.install.after_install"
 
 doc_events = {
 	"User": {"on_update": "flutter_utils.realtime.disconnect_disabled_user_sockets"},
+	"File": {
+		"before_validate": "flutter_utils.verification.permissions.protect_file",
+		"on_trash": "flutter_utils.verification.permissions.protect_file",
+	},
+}
+
+# Verification is policy-driven. Other apps register dotted VerificationPolicy
+# subclass paths in their own verification_policies hook dictionaries.
+has_permission = {
+	"Verification Document": "flutter_utils.verification.permissions.has_permission",
+	"Verification Request": "flutter_utils.verification.permissions.has_permission",
+	"Verification Review Log": "flutter_utils.verification.permissions.has_permission",
+	"Verification Notification Delivery": "flutter_utils.verification.permissions.has_permission",
+	"File": "flutter_utils.verification.permissions.file_permission",
+}
+permission_query_conditions = {
+	"File": "flutter_utils.verification.permissions.file_query_conditions",
+	"Verification Document": "flutter_utils.verification.permissions.document_query_conditions",
+	"Verification Request": "flutter_utils.verification.permissions.request_query_conditions",
+	"Verification Review Log": "flutter_utils.verification.permissions.deny_query",
+	"Verification Notification Delivery": "flutter_utils.verification.permissions.deny_query",
+}
+extend_doctype_class = {
+	"Notification Log": ["flutter_utils.verification.notification_log.VerificationNotificationMixin"],
+	"File": ["flutter_utils.verification.file.VerificationFileMixin"],
+}
+doctype_js = {
+	"Verification Document": "public/js/verification.js",
+	"Verification Request": "public/js/verification.js",
+}
+scheduler_events = {
+	"daily": ["flutter_utils.verification.tasks.refresh_validity"],
+	"cron": {"*/5 * * * *": ["flutter_utils.verification.notifications.dispatch_due"]},
 }
 
 # Scheduled Tasks

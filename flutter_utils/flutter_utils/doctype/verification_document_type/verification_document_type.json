@@ -1,0 +1,17 @@
+{
+ "doctype": "DocType", "name": "Verification Document Type", "module": "Flutter Utils",
+ "autoname": "field:title", "engine": "InnoDB", "track_changes": 1,
+ "field_order": ["title", "enabled", "required_fields", "requires_expiry", "allowed_extensions", "allowed_roles", "max_files", "max_file_size_mb", "warning_days"],
+ "fields": [
+  {"fieldname": "title", "label": "Title", "fieldtype": "Data", "reqd": 1, "unique": 1, "in_list_view": 1},
+  {"fieldname": "enabled", "label": "Enabled", "fieldtype": "Check", "default": "1"},
+  {"fieldname": "required_fields", "label": "Required Metadata (one field per line)", "fieldtype": "Small Text"},
+  {"fieldname": "requires_expiry", "label": "Requires Expiry Date", "fieldtype": "Check", "default": "0"},
+  {"fieldname": "allowed_extensions", "label": "Allowed Extensions (one per line)", "fieldtype": "Small Text", "default": "pdf\njpg\njpeg\npng"},
+  {"fieldname": "allowed_roles", "label": "Evidence Roles (one per line)", "fieldtype": "Small Text", "default": "Front\nBack\nSelfie\nSupporting Document\nAdditional Page"},
+  {"fieldname": "max_files", "label": "Maximum Files per Revision", "fieldtype": "Int", "default": "5", "reqd": 1},
+  {"fieldname": "max_file_size_mb", "label": "Maximum File Size (MB)", "fieldtype": "Int", "default": "10", "reqd": 1},
+  {"fieldname": "warning_days", "label": "Expiry Warning Days", "fieldtype": "Int", "default": "30", "reqd": 1}
+ ],
+ "permissions": [{"role": "System Manager", "read": 1, "write": 1, "create": 1}, {"role": "Verification Reviewer", "read": 1}]
+}

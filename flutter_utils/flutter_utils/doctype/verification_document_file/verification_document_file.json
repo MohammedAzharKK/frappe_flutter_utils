@@ -1,0 +1,12 @@
+{
+ "doctype": "DocType", "name": "Verification Document File", "module": "Flutter Utils", "istable": 1,
+ "field_order": ["file", "evidence_role", "revision", "uploaded_by", "uploaded_at", "content_hash"],
+ "fields": [
+  {"fieldname": "file", "label": "Private File", "fieldtype": "Link", "options": "File", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "evidence_role", "label": "Evidence Role", "fieldtype": "Data", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "revision", "label": "Revision", "fieldtype": "Int", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "uploaded_by", "label": "Uploaded By", "fieldtype": "Link", "options": "User", "read_only": 1},
+  {"fieldname": "uploaded_at", "label": "Uploaded At", "fieldtype": "Datetime", "read_only": 1},
+  {"fieldname": "content_hash", "label": "Evidence Hash", "fieldtype": "Data", "read_only": 1}
+ ], "permissions": []
+}

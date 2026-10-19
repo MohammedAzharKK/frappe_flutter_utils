@@ -64,6 +64,8 @@ Frappe-Authorization-Source: Flutter Device Credential
 
 `Maximum Logged-in Devices` in Flutter Utils Settings defaults to `1`. A login beyond the configured limit revokes the oldest active device credential. Lowering the setting queues background pruning of existing excess credentials. Browser `sid` sessions and `firebase_session_login` remain governed by Frappe's standard session policy.
 
+`Check Revoked Tokens` in Flutter Utils Settings defaults to disabled to avoid an extra Firebase user lookup during authentication. Firebase token signature, expiry, project, and provider validation still run, and Frappe rejects disabled users. Enable this setting if Firebase-side token revocation and account disabling must also be enforced. When it is disabled, disabling an account only in Firebase does not reject an otherwise valid ID token; disable the corresponding Frappe user instead. Existing sites retain their saved setting; uncheck `Check Revoked Tokens` to adopt this default.
+
 Firebase identity linking requires fresh ID tokens for both accounts. The endpoint is idempotent, permits
 multiple Firebase UIDs to resolve to one Frappe user, and refuses to merge identities that already belong to
 different Frappe users. Existing Frappe users require manual business-data reconciliation before their
@@ -278,3 +280,17 @@ The mobile signup API creates the Frappe `User` with:
 Reusable managed-device registration and queued Firebase delivery are documented in
 [PUSH_NOTIFICATIONS.md](PUSH_NOTIFICATIONS.md). Push uses the existing Firebase
 service account in Flutter Utils Settings and requires Flutter Device Credential authentication.
+
+# App release settings
+
+Android and iOS release state is documented in
+[App release settings](docs/app-settings.md). The `App Settings` tab of Flutter Utils
+Settings publishes current version, minimum version, forced updates, and temporary
+unavailability per platform.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `flutter_utils.api.app_settings.get_app_config` | Public Android/iOS release state for pre-login update and maintenance screens |
+
+This state is advisory. No endpoint is blocked and no credential is revoked, so a
+misconfigured minimum version can never lock users out of the API.
