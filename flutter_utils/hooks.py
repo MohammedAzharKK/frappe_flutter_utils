@@ -68,10 +68,13 @@ permission_query_conditions = {
 	"Verification Notification Delivery": "flutter_utils.verification.permissions.deny_query",
 }
 extend_doctype_class = {
+	"Email Account": ["flutter_utils.email.email_account.SendgridEmailAccountMixin"],
+	"Email Queue": ["flutter_utils.email.email_queue.SendgridEmailQueueMixin"],
 	"Notification Log": ["flutter_utils.verification.notification_log.VerificationNotificationMixin"],
 	"File": ["flutter_utils.verification.file.VerificationFileMixin"],
 }
 doctype_js = {
+	"Email Account": "public/js/email_account.js",
 	"Verification Document": "public/js/verification.js",
 	"Verification Request": "public/js/verification.js",
 }

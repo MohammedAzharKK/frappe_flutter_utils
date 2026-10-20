@@ -706,7 +706,9 @@ def _firebase_login_timing(stage: str, attempt_id: str) -> Iterator[None]:
 		yield
 		result = "ok"
 	finally:
-		frappe.logger("firebase_auth", allow_site=True).info(
+		logger = frappe.logger("firebase_auth", allow_site=True)
+		logger.setLevel("INFO")
+		logger.info(
 			json.dumps(
 				{
 					"stage": stage,
@@ -787,7 +789,7 @@ def send_otp_email(email: str, otp: str, context: str) -> None:
 def ensure_email_otp_delivery_is_configured() -> None:
 	email_account = EmailAccount.find_outgoing(_raise_error=True)
 	if email_account.service == "Sendgrid HTTP":
-		api_key = email_account.get_password("password") or frappe.conf.get("sendgrid_api_key")
+		api_key = email_account.get_password("password", raise_exception=False) or frappe.conf.get("sendgrid_api_key")
 		if not api_key:
 			frappe.throw(_("SendGrid API key is not configured for the outgoing email account."))
 		return

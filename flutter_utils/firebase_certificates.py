@@ -97,7 +97,9 @@ def _refresh() -> dict[str, Any] | None:
 
 
 def _log_refresh(started: float, result: str) -> None:
-	frappe.logger("firebase_auth", allow_site=True).info(
+	logger = frappe.logger("firebase_auth", allow_site=True)
+	logger.setLevel("INFO")
+	logger.info(
 		json.dumps(
 			{
 				"stage": "certificate_refresh",
