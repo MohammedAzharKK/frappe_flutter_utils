@@ -297,6 +297,7 @@ class TestFirebaseLoginTimings(unittest.TestCase):
 		self.assertEqual(len({record["attempt_id"] for record in records}), 1)
 		self.assertTrue(all(record["result"] == "ok" for record in records))
 		self.assertNotIn("sensitive", str(records))
+		logger.return_value.setLevel.assert_called_with("INFO")
 
 	def test_failed_exchange_is_timed_without_logging_exception_payload(self) -> None:
 		from flutter_utils.api.auth import firebase_token_login

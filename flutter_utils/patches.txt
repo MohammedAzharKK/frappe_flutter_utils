@@ -2,3 +2,4 @@ flutter_utils.patches.v1_0.create_otp_email_template
 flutter_utils.patches.v1_0.remove_user_workspace_sidebar_fields
 flutter_utils.patches.v1_0.set_firebase_auth_defaults
 flutter_utils.patches.v1_0.merge_push_registration
+flutter_utils.patches.v1_0.add_sendgrid_email_service

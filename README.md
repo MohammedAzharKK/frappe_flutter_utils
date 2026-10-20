@@ -11,6 +11,7 @@ deployments of the realtime handler require restarting Socket.IO as well as Pyth
 
 - **Exception Handler**: Patches Frappe's default exception handler to return structured, human-readable JSON responses for Flutter clients.
 - **Email OTP Authentication**: Passwordless login and signup via configurable OTP sent to email.
+- **SendGrid HTTP Email**: Send standard Frappe Email Queue messages through SendGrid without SMTP or the deprecated `frappe_sendgrid` app. See [setup and migration](docs/SENDGRID.md).
 - **Native Password + 2FA Authentication**: Frappe-managed email/password login with Email, SMS, or OTP App verification, returning browser sessions or managed device credentials.
 - **Mobile OTP Authentication**: Passwordless login and signup via 6-digit OTP sent to mobile using Twilio.
 - **Firebase Authentication**: Firebase ID-token verification with Frappe session, API credential, and per-request authentication modes.

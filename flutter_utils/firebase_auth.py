@@ -109,7 +109,9 @@ def verify_firebase_id_token(id_token: str) -> VerifiedFirebaseIdentity:
 			503,
 		) from exc
 	finally:
-		frappe.logger("firebase_auth", allow_site=True).info(
+		logger = frappe.logger("firebase_auth", allow_site=True)
+		logger.setLevel("INFO")
+		logger.info(
 			json.dumps(
 				{
 					"stage": "token_verification",
