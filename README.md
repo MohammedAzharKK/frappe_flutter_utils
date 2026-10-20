@@ -66,6 +66,11 @@ Frappe-Authorization-Source: Flutter Device Credential
 
 `Check Revoked Tokens` in Flutter Utils Settings defaults to disabled to avoid an extra Firebase user lookup during authentication. Firebase token signature, expiry, project, and provider validation still run, and Frappe rejects disabled users. Enable this setting if Firebase-side token revocation and account disabling must also be enforced. When it is disabled, disabling an account only in Firebase does not reject an otherwise valid ID token; disable the corresponding Frappe user instead. Existing sites retain their saved setting; uncheck `Check Revoked Tokens` to adopt this default.
 
+Firebase public signing certificates are shared across Python workers through a site-scoped Redis
+cache and refreshed in the background before expiry. See
+[Firebase certificate caching and rollout](docs/firebase-certificate-cache.md) for scheduling,
+security guarantees, diagnostics, and deployment verification.
+
 Firebase identity linking requires fresh ID tokens for both accounts. The endpoint is idempotent, permits
 multiple Firebase UIDs to resolve to one Frappe user, and refuses to merge identities that already belong to
 different Frappe users. Existing Frappe users require manual business-data reconciliation before their

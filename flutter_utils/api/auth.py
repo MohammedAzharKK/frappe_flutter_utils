@@ -1,6 +1,10 @@
 import json
 import random
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
+from uuid import uuid4
 
 import frappe
 import phonenumbers
@@ -682,11 +686,36 @@ def firebase_token_login(
 
 	hash_device_id(device_id)
 	assert device_id is not None
-	identity = verify_firebase_id_token(id_token)
-	user = resolve_firebase_user(identity)
-	response = issue_device_api_credentials(user, device_id, device_name)
-	response.update({"auth_mode": "token", "provider": identity.provider})
+	attempt_id = uuid4().hex
+	with _firebase_login_timing("login_total", attempt_id):
+		with _firebase_login_timing("verify_identity", attempt_id):
+			identity = verify_firebase_id_token(id_token)
+		with _firebase_login_timing("resolve_user", attempt_id):
+			user = resolve_firebase_user(identity)
+		with _firebase_login_timing("issue_credentials", attempt_id):
+			response = issue_device_api_credentials(user, device_id, device_name)
+		response.update({"auth_mode": "token", "provider": identity.provider})
 	return response
+
+
+@contextmanager
+def _firebase_login_timing(stage: str, attempt_id: str) -> Iterator[None]:
+	started = time.monotonic()
+	result = "failed"
+	try:
+		yield
+		result = "ok"
+	finally:
+		frappe.logger("firebase_auth", allow_site=True).info(
+			json.dumps(
+				{
+					"stage": stage,
+					"attempt_id": attempt_id,
+					"result": result,
+					"seconds": round(time.monotonic() - started, 3),
+				}
+			)
+		)
 
 
 @frappe.whitelist(methods=["POST"])
