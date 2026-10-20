@@ -48,7 +48,7 @@ class TestFirebaseTokenVerification(FrappeTestCase):
 		with (
 			patch("flutter_utils.firebase_auth._get_enabled_firebase_settings", return_value=self.settings),
 			patch("flutter_utils.firebase_auth.get_firebase_app", return_value=firebase_app),
-			patch("flutter_utils.firebase_auth.auth.verify_id_token", return_value=claims) as verify_token,
+			patch("flutter_utils.firebase_auth.verify_id_token", return_value=claims) as verify_token,
 		):
 			identity = verify_firebase_id_token("firebase-token")
 
@@ -73,7 +73,7 @@ class TestFirebaseTokenVerification(FrappeTestCase):
 		with (
 			patch("flutter_utils.firebase_auth._get_enabled_firebase_settings", return_value=self.settings),
 			patch("flutter_utils.firebase_auth.get_firebase_app", return_value=firebase_app),
-			patch("flutter_utils.firebase_auth.auth.verify_id_token", return_value=claims) as verify_token,
+			patch("flutter_utils.firebase_auth.verify_id_token", return_value=claims) as verify_token,
 		):
 			verify_firebase_id_token("firebase-token")
 
@@ -90,7 +90,7 @@ class TestFirebaseTokenVerification(FrappeTestCase):
 		with (
 			patch("flutter_utils.firebase_auth._get_enabled_firebase_settings", return_value=self.settings),
 			patch("flutter_utils.firebase_auth.get_firebase_app", return_value=MagicMock()),
-			patch("flutter_utils.firebase_auth.auth.verify_id_token", return_value=claims),
+			patch("flutter_utils.firebase_auth.verify_id_token", return_value=claims),
 			self.assertRaises(FirebaseAuthError) as context,
 		):
 			verify_firebase_id_token("firebase-token")
@@ -103,7 +103,7 @@ class TestFirebaseTokenVerification(FrappeTestCase):
 			patch("flutter_utils.firebase_auth._get_enabled_firebase_settings", return_value=self.settings),
 			patch("flutter_utils.firebase_auth.get_firebase_app", return_value=MagicMock()),
 			patch(
-				"flutter_utils.firebase_auth.auth.verify_id_token",
+				"flutter_utils.firebase_auth.verify_id_token",
 				side_effect=firebase_admin_auth.ExpiredIdTokenError("expired", None),
 			),
 			self.assertRaises(FirebaseAuthError) as context,

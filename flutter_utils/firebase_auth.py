@@ -8,6 +8,7 @@ import frappe
 from firebase_admin import auth
 from frappe import _
 
+from flutter_utils.firebase_tokens import verify_id_token
 from flutter_utils.flutter_utils.doctype.firebase_auth_identity.firebase_auth_identity import (
 	_build_identity_key,
 )
@@ -72,12 +73,15 @@ def verify_firebase_id_token(id_token: str) -> VerifiedFirebaseIdentity:
 
 	settings = _get_enabled_firebase_settings()
 	app = get_firebase_app(settings)
+	started = time.monotonic()
+	result = "failed"
 	try:
-		claims = auth.verify_id_token(
+		claims = verify_id_token(
 			id_token.strip(),
 			app=app,
 			check_revoked=bool(settings.firebase_check_revoked_tokens),
 		)
+		result = "ok"
 	except auth.ExpiredIdTokenError as exc:
 		raise FirebaseAuthError(
 			_("Firebase session has expired. Please sign in again."), "firebase_token_expired"
@@ -96,13 +100,24 @@ def verify_firebase_id_token(id_token: str) -> VerifiedFirebaseIdentity:
 		) from exc
 	except Exception as exc:
 		frappe.log_error(
-			title="Firebase Token Verification Failed", message=frappe.get_traceback(with_context=False)
+			title="Firebase Token Verification Failed",
+			message=f"Verification unavailable ({type(exc).__name__}). See firebase_auth timing logs.",
 		)
 		raise FirebaseAuthError(
 			_("Firebase Authentication is temporarily unavailable."),
 			"firebase_unavailable",
 			503,
 		) from exc
+	finally:
+		frappe.logger("firebase_auth", allow_site=True).info(
+			json.dumps(
+				{
+					"stage": "token_verification",
+					"result": result,
+					"seconds": round(time.monotonic() - started, 3),
+				}
+			)
+		)
 
 	project_id = settings.firebase_project_id.strip()
 	if claims.get("aud") != project_id:
