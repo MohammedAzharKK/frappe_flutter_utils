@@ -1,3 +1,4 @@
+import hashlib
 import json
 import random
 import time
@@ -152,9 +153,7 @@ def send_otp(
 			frappe.AuthenticationError,
 		)
 	if purpose == "verify_mobile" and frappe.session.user == "Guest":
-		frappe.throw(
-			_("Sign in before verifying a mobile number."), frappe.AuthenticationError
-		)
+		frappe.throw(_("Sign in before verifying a mobile number."), frappe.AuthenticationError)
 	context = resolve_otp_context(channel=channel, email=email, mobile_no=mobile_no)
 	if purpose == "verify_mobile" and context["channel"] != "mobile":
 		frappe.throw(_("Mobile verification requires a mobile number."))
@@ -226,9 +225,7 @@ def verify_otp(
 	purpose = normalize_otp_purpose(purpose)
 	auth_mode = normalize_auth_mode(auth_mode)
 	if purpose == "verify_mobile" and frappe.session.user == "Guest":
-		frappe.throw(
-			_("Sign in before verifying a mobile number."), frappe.AuthenticationError
-		)
+		frappe.throw(_("Sign in before verifying a mobile number."), frappe.AuthenticationError)
 	if auth_mode == "session" and purpose != "login":
 		frappe.throw(_("Browser session authentication is only available for login."))
 	if purpose in {"login", "signup"} and auth_mode == "token":
@@ -409,9 +406,7 @@ def verify_verify_mobile_otp(mobile_no: str, otp: str) -> dict:
 def normalize_otp_purpose(purpose: str) -> str:
 	normalized = purpose.strip().lower()
 	if normalized not in OTP_PURPOSES:
-		frappe.throw(
-			_("Purpose must be one of: login, signup, reset_password, verify_mobile.")
-		)
+		frappe.throw(_("Purpose must be one of: login, signup, reset_password, verify_mobile."))
 	return normalized
 
 
@@ -531,6 +526,11 @@ def assert_signup_identity_available(email: str | None, mobile_no: str | None = 
 
 
 def build_otp_cache_key(purpose: str, channel: str, recipient: str) -> str:
+	if purpose == "verify_mobile":
+		# Contact verification belongs to the authenticated requester. Keep login,
+		# signup and password-reset challenges (and recipient cooldowns) unchanged.
+		user_scope = hashlib.sha256(frappe.session.user.encode()).hexdigest()
+		return f"{purpose}_otp:{user_scope}:{channel}:{recipient}"
 	return f"{purpose}_otp:{channel}:{recipient}"
 
 
@@ -846,7 +846,9 @@ def send_otp_email(email: str, otp: str, context: str) -> None:
 def ensure_email_otp_delivery_is_configured() -> None:
 	email_account = EmailAccount.find_outgoing(_raise_error=True)
 	if email_account.service == "Sendgrid HTTP":
-		api_key = email_account.get_password("password", raise_exception=False) or frappe.conf.get("sendgrid_api_key")
+		api_key = email_account.get_password("password", raise_exception=False) or frappe.conf.get(
+			"sendgrid_api_key"
+		)
 		if not api_key:
 			frappe.throw(_("SendGrid API key is not configured for the outgoing email account."))
 		return
