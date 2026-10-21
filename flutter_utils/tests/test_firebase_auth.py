@@ -255,6 +255,9 @@ class TestFirebaseUserProvisioning(FrappeTestCase):
 
 		user = resolve_firebase_user(google_identity)
 		self.created_users.append(user.name)
+		# Creating the identity mapping runs the app's after_insert hook, which may
+		# update the User; reload before mutating so the timestamp check passes.
+		user.reload()
 		user.mobile_no = "+16505550100"
 		user.save(ignore_permissions=True)
 

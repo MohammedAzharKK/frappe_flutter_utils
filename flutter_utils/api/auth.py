@@ -17,7 +17,7 @@ from flutter_utils.device_credentials import (
 	normalize_device_name,
 )
 
-OTP_PURPOSES = {"login", "signup", "reset_password"}
+OTP_PURPOSES = {"login", "signup", "reset_password", "verify_mobile"}
 OTP_CHANNELS = {"email", "mobile"}
 AUTH_MODES = {"token", "session"}
 
@@ -147,7 +147,13 @@ def send_otp(
 			),
 			frappe.AuthenticationError,
 		)
+	if purpose == "verify_mobile" and frappe.session.user == "Guest":
+		frappe.throw(
+			_("Sign in before verifying a mobile number."), frappe.AuthenticationError
+		)
 	context = resolve_otp_context(channel=channel, email=email, mobile_no=mobile_no)
+	if purpose == "verify_mobile" and context["channel"] != "mobile":
+		frappe.throw(_("Mobile verification requires a mobile number."))
 
 	enforce_otp_resend_cooldown(purpose, context["channel"], context["recipient"])
 
@@ -161,6 +167,9 @@ def send_otp(
 		user = validate_reset_password_target(context)
 		payload = {"otp": otp}
 		recipient_name = user.full_name
+	elif purpose == "verify_mobile":
+		payload = {"otp": otp, "mobile_no": context["recipient"]}
+		recipient_name = frappe.utils.get_fullname(frappe.session.user) or frappe.session.user
 	else:
 		payload = validate_signup_target(context, full_name=full_name, email=email)
 		payload["otp"] = otp
@@ -212,6 +221,10 @@ def verify_otp(
 	"""
 	purpose = normalize_otp_purpose(purpose)
 	auth_mode = normalize_auth_mode(auth_mode)
+	if purpose == "verify_mobile" and frappe.session.user == "Guest":
+		frappe.throw(
+			_("Sign in before verifying a mobile number."), frappe.AuthenticationError
+		)
 	if auth_mode == "session" and purpose != "login":
 		frappe.throw(_("Browser session authentication is only available for login."))
 	if purpose in {"login", "signup"} and auth_mode == "token":
@@ -226,6 +239,9 @@ def verify_otp(
 		frappe.throw(_("Invalid or expired OTP."))
 
 	otp_delete(cache_key)
+
+	if purpose == "verify_mobile":
+		return {"verified": True, "mobile_no": context["recipient"]}
 
 	if purpose == "login":
 		user = (
@@ -369,10 +385,29 @@ def verify_password_reset_otp(email: str, otp: str, new_password: str) -> dict:
 	)
 
 
+@frappe.whitelist(methods=["POST"])
+def send_verify_mobile_otp(mobile_no: str) -> dict:
+	"""Send an SMS OTP to a signed-in user so they can verify a contact number."""
+	return send_otp(purpose="verify_mobile", channel="mobile", mobile_no=mobile_no)
+
+
+@frappe.whitelist(methods=["POST"])
+def verify_verify_mobile_otp(mobile_no: str, otp: str) -> dict:
+	"""Confirm a contact-number OTP for the signed-in user."""
+	return verify_otp(
+		purpose="verify_mobile",
+		channel="mobile",
+		mobile_no=mobile_no,
+		otp=otp,
+	)
+
+
 def normalize_otp_purpose(purpose: str) -> str:
 	normalized = purpose.strip().lower()
 	if normalized not in OTP_PURPOSES:
-		frappe.throw(_("Purpose must be one of: login, signup, reset_password."))
+		frappe.throw(
+			_("Purpose must be one of: login, signup, reset_password, verify_mobile.")
+		)
 	return normalized
 
 
@@ -466,16 +501,29 @@ def validate_signup_target(context: dict[str, str], full_name: str | None, email
 
 
 def assert_signup_identity_available(email: str | None, mobile_no: str | None = None) -> None:
-	if email and frappe.db.get_value("User", email, "enabled"):
-		frappe.throw(_("An account with this email already exists. Please sign in instead."))
+	# Existence, not just "enabled": a disabled row still owns the identity and
+	# inserting a second User with the same email/phone can only fail. A
+	# self-deleted account must rejoin through sign-in instead.
+	if email and frappe.db.exists("User", email):
+		frappe.throw(
+			_(
+				"An account with this email already exists. Sign in instead, "
+				"or contact support if you cannot access it."
+			)
+		)
 
 	if mobile_no and frappe.get_all(
 		"User",
-		filters={"mobile_no": mobile_no, "enabled": 1},
+		filters={"mobile_no": mobile_no},
 		pluck="name",
 		limit=1,
 	):
-		frappe.throw(_("An account with this mobile number already exists. Please sign in instead."))
+		frappe.throw(
+			_(
+				"An account with this mobile number already exists. Sign in instead, "
+				"or contact support if you cannot access it."
+			)
+		)
 
 
 def build_otp_cache_key(purpose: str, channel: str, recipient: str) -> str:
@@ -584,6 +632,15 @@ def get_enabled_user_by_email(email: str):
 
 
 def create_user(full_name: str, email: str, mobile_no: str | None = None) -> Any:
+	if frappe.db.exists("User", email):
+		# Never attempt a duplicate insert (User.name is the email). Self-deleted
+		# identities rejoin through sign-in; admins handle the rest.
+		frappe.throw(
+			_(
+				"An account with this email already exists. Sign in instead, "
+				"or contact support if you cannot access it."
+			)
+		)
 	user = frappe.new_doc("User")
 	user.first_name = full_name
 	user.email = email
