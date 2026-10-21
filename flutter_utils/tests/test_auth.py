@@ -93,6 +93,75 @@ class TestOtpCooldown(FrappeTestCase):
 		record_cooldown.assert_called_once_with("login", "mobile", "+919400797246")
 
 
+class TestVerifyMobileOtp(FrappeTestCase):
+	def test_verify_mobile_purpose_is_supported(self) -> None:
+		self.assertEqual(auth.normalize_otp_purpose("verify_mobile"), "verify_mobile")
+
+	def test_verify_mobile_requires_a_signed_in_user(self) -> None:
+		original_user = frappe.session.user
+		try:
+			frappe.set_user("Guest")
+			with (
+				patch(
+					"flutter_utils.api.auth.get_flutter_utils_settings",
+					return_value=frappe._dict(test_mode=True),
+				),
+				self.assertRaises(frappe.AuthenticationError),
+			):
+				auth.send_otp(
+					purpose="verify_mobile",
+					channel="mobile",
+					mobile_no="+919400797246",
+				)
+		finally:
+			frappe.set_user(original_user)
+
+	def test_send_verify_mobile_uses_the_otp_store_without_signup(self) -> None:
+		with (
+			patch(
+				"flutter_utils.api.auth.get_flutter_utils_settings",
+				return_value=frappe._dict(test_mode=True),
+			),
+			patch(
+				"flutter_utils.api.auth.resolve_otp_context",
+				return_value={"channel": "mobile", "recipient": "+919400797246"},
+			),
+			patch("flutter_utils.api.auth.enforce_otp_resend_cooldown"),
+			patch("flutter_utils.api.auth.generate_otp", return_value="1234"),
+			patch("flutter_utils.api.auth.validate_signup_target") as signup_target,
+			patch("flutter_utils.api.auth.otp_set") as store_otp,
+			patch("flutter_utils.api.auth.record_otp_resend_cooldown"),
+		):
+			auth.send_otp(
+				purpose="verify_mobile",
+				channel="mobile",
+				mobile_no="+919400797246",
+			)
+
+		signup_target.assert_not_called()
+		store_otp.assert_called_once()
+
+	def test_verify_mobile_otp_returns_verified(self) -> None:
+		with (
+			patch(
+				"flutter_utils.api.auth.resolve_otp_context",
+				return_value={"channel": "mobile", "recipient": "+919400797246"},
+			),
+			patch("flutter_utils.api.auth.otp_get", return_value='{"otp": "1234"}'),
+			patch("flutter_utils.api.auth.otp_delete"),
+		):
+			result = auth.verify_otp(
+				purpose="verify_mobile",
+				channel="mobile",
+				mobile_no="+919400797246",
+				otp="1234",
+			)
+
+		self.assertEqual(
+			result, {"verified": True, "mobile_no": "+919400797246"}
+		)
+
+
 class TestBrowserSessionAuthentication(FrappeTestCase):
 	def test_guest_session_context_is_anonymous(self) -> None:
 		original_user = frappe.session.user
