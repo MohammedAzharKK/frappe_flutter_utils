@@ -678,6 +678,18 @@ def get_session_context() -> dict[str, Any]:
 	return build_browser_session_response(frappe.get_doc("User", frappe.session.user))
 
 
+@frappe.whitelist(methods=["GET"])
+def get_token_context() -> dict[str, Any]:
+	"""Return managed-device identity without creating or persisting a browser session."""
+	from flutter_utils.authentication.context import require_current_device_credential
+
+	require_current_device_credential()
+	return {
+		**_build_user_context(frappe.get_doc("User", frappe.session.user)),
+		"auth_mode": "token",
+	}
+
+
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 def logout_session() -> dict[str, str]:
 	"""End the current browser session and clear its cookies."""
@@ -698,15 +710,21 @@ def build_browser_session_response(user: Any) -> dict[str, Any]:
 	from frappe.sessions import get_csrf_token
 
 	return {
-		"authenticated": True,
+		**_build_user_context(user),
 		"auth_mode": "session",
+		"csrf_token": get_csrf_token(),
+	}
+
+
+def _build_user_context(user: Any) -> dict[str, Any]:
+	return {
+		"authenticated": True,
 		"user": user.name,
 		"full_name": user.full_name,
 		"email": user.email,
 		"mobile_no": user.mobile_no,
 		"user_type": user.user_type,
 		"roles": sorted(frappe.get_roles(user.name)),
-		"csrf_token": get_csrf_token(),
 	}
 
 

@@ -31,6 +31,7 @@ deployments of the realtime handler require restarting Socket.IO as well as Pyth
 | POST | `flutter_utils.api.auth.link_firebase_identities` | Link two recently authenticated Firebase identities to one Frappe user |
 | POST | `flutter_utils.api.auth.logout_device` | Revoke the managed credential used for the current request |
 | GET | `flutter_utils.api.auth.get_session_context` | Return the authenticated browser session and CSRF token |
+| GET | `flutter_utils.api.auth.get_token_context` | Revalidate a managed device credential and return user/role context without browser-session writes or CSRF generation |
 | POST | `flutter_utils.api.auth.logout_session` | End the current browser session |
 
 ### Device Token Authentication
