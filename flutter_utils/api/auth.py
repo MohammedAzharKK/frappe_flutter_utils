@@ -165,6 +165,10 @@ def send_otp(
 	if purpose == "login":
 		user = validate_login_target(context)
 		payload = {"otp": otp}
+		test_otp = _get_test_phone_otp(settings, purpose, context, user)
+		if test_otp:
+			payload["otp"] = test_otp
+			payload["test_phone_login"] = _test_phone_challenge_identity(settings, user)
 		recipient_name = user.full_name
 	elif purpose == "reset_password":
 		user = validate_reset_password_target(context)
@@ -184,6 +188,10 @@ def send_otp(
 		json.dumps(payload),
 		ttl=get_otp_ttl_seconds(),
 	)
+
+	if payload.get("test_phone_login"):
+		record_otp_resend_cooldown(purpose, context["channel"], context["recipient"])
+		return build_otp_send_response()
 
 	if settings.test_mode:
 		record_otp_resend_cooldown(purpose, context["channel"], context["recipient"])
@@ -238,6 +246,18 @@ def verify_otp(
 
 	if not data or data.get("otp") != otp.strip():
 		frappe.throw(_("Invalid or expired OTP."))
+
+	if data.get("test_phone_login"):
+		settings = get_flutter_utils_settings()
+		user = validate_login_target(context)
+		configured_otp = _get_test_phone_otp(settings, purpose, context, user)
+		if (
+			not configured_otp
+			or configured_otp != otp.strip()
+			or data["test_phone_login"] != _test_phone_challenge_identity(settings, user)
+		):
+			otp_delete(cache_key)
+			frappe.throw(_("Invalid or expired OTP."))
 
 	otp_delete(cache_key)
 
@@ -435,6 +455,47 @@ def resolve_otp_context(
 	if not normalized_mobile:
 		frappe.throw(_("Mobile number is required for mobile OTP."))
 	return {"channel": "mobile", "recipient": normalized_mobile}
+
+
+def _get_test_phone_otp(settings: Any, purpose: str, context: dict[str, str], user: Any) -> str | None:
+	"""Only an explicitly configured, unprivileged mobile login may skip delivery."""
+	if (
+		not settings.get("enable_test_phone_login")
+		or not settings.get("enable_mobile_otp")
+		or purpose != "login"
+		or context["channel"] != "mobile"
+		or context["recipient"] != settings.get("test_phone_number")
+	):
+		return None
+	_validate_test_phone_user(user)
+	code = settings.get_password("test_phone_otp", raise_exception=False) or ""
+	if not code.isascii() or not code.isdigit() or len(code) != int(settings.otp_length or 4):
+		frappe.throw(_("Test phone login is not configured correctly."))
+	return code
+
+
+def _validate_test_phone_user(user: Any) -> None:
+	if (
+		not user.enabled
+		or user.name in {"Administrator", "Guest"}
+		or user.user_type != "Website User"
+		or set(frappe.get_roles(user.name)).intersection({"System Manager", "Super Admin"})
+	):
+		frappe.throw(_("Test phone login requires an enabled, non-admin Website User."))
+
+
+def _test_phone_challenge_identity(settings: Any, user: Any) -> str:
+	"""Bind challenges to this saved configuration and account, not just the code."""
+	return hashlib.sha256(
+		json.dumps(
+			[
+				str(settings.modified),
+				settings.test_phone_number,
+				user.name,
+				settings.get_password("test_phone_otp", raise_exception=False),
+			]
+		).encode()
+	).hexdigest()
 
 
 def validate_login_target(context: dict[str, str]):

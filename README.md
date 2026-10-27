@@ -14,6 +14,7 @@ deployments of the realtime handler require restarting Socket.IO as well as Pyth
 - **SendGrid HTTP Email**: Send standard Frappe Email Queue messages through SendGrid without SMTP or the deprecated `frappe_sendgrid` app. See [setup and migration](docs/SENDGRID.md).
 - **Native Password + 2FA Authentication**: Frappe-managed email/password login with Email, SMS, or OTP App verification, returning browser sessions or managed device credentials.
 - **Mobile OTP Authentication**: Passwordless login and signup via 6-digit OTP sent to mobile using Twilio.
+- **Test Phone Login**: Optional static OTP for one dedicated demo account, without sending a real message or enabling global Test Mode. See [setup and security](docs/test-phone-login.md).
 - **Firebase Authentication**: Firebase ID-token verification with Frappe session, API credential, and per-request authentication modes.
 - **Multi-device Authentication**: Issues independently revocable API credentials per client installation and enforces a configurable per-user device limit.
 
