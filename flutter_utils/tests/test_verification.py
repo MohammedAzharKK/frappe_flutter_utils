@@ -10,6 +10,7 @@ import copy
 import inspect
 import io
 import logging
+import tempfile
 from contextlib import ExitStack
 from datetime import datetime
 from types import SimpleNamespace
@@ -19,6 +20,8 @@ from unittest.mock import Mock, patch
 
 import frappe
 from frappe.utils import CallbackManager
+from werkzeug.test import EnvironBuilder
+from werkzeug.wrappers import Request
 
 from flutter_utils.api import verification as api
 from flutter_utils.verification import evidence, model, notifications, permissions, policies, service, tasks
@@ -853,6 +856,59 @@ class TestVerification(TestCase):
 		):
 			api.download_evidence(file.name)
 		self.assertEqual(self.local.response.filecontent, b"private evidence")
+
+	def test_api_download_serves_video_ranges_for_media_players(self) -> None:
+		file = self._downloadable_file()
+		file.file_name = "introduction.mp4"
+		with tempfile.NamedTemporaryFile(suffix=".mp4") as handle:
+			handle.write(b"0123456789")
+			handle.flush()
+			file.get_full_path = lambda: handle.name
+			request = Request(
+				EnvironBuilder(
+					method="GET",
+					path="/api/method/flutter_utils.api.verification.download_evidence",
+					headers={"Range": "bytes=2-5"},
+				).get_environ()
+			)
+			with (
+				patch.object(api, "_has_valid_signature", return_value=True),
+				patch("frappe.request", request),
+				self._serve_from_file(file),
+			):
+				response = api.download_evidence(file.name)
+		self.assertEqual(response.status_code, 206)
+		self.assertEqual(b"".join(response.response), b"2345")
+		self.assertEqual(response.headers["Content-Range"], "bytes 2-5/10")
+		self.assertEqual(response.headers["Accept-Ranges"], "bytes")
+		self.assertTrue(response.headers["Content-Type"].startswith("video/mp4"))
+		self.assertIn("inline", response.headers["Content-Disposition"])
+
+	def test_api_download_streams_full_files_and_advertises_ranges(self) -> None:
+		file = self._downloadable_file()
+		file.file_name = "introduction.mp4"
+		with tempfile.NamedTemporaryFile(suffix=".mp4") as handle:
+			handle.write(b"0123456789")
+			handle.flush()
+			file.get_full_path = lambda: handle.name
+			request = Request(
+				EnvironBuilder(
+					method="GET",
+					path="/api/method/flutter_utils.api.verification.download_evidence",
+				).get_environ()
+			)
+			with (
+				patch.object(api, "_has_valid_signature", return_value=True),
+				patch("frappe.request", request),
+				self._serve_from_file(file),
+			):
+				response = api.download_evidence(file.name)
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(b"".join(response.response), b"0123456789")
+		self.assertEqual(response.headers["Accept-Ranges"], "bytes")
+		self.assertEqual(response.headers["Content-Length"], "10")
+		self.assertTrue(response.headers["Content-Type"].startswith("video/mp4"))
+		self.assertIn("inline", response.headers["Content-Disposition"])
 
 	def test_api_download_rejects_unsigned_and_unlinked_files(self) -> None:
 		file = self._downloadable_file()
