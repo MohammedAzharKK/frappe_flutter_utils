@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import hmac
+import mimetypes
 from typing import Any
 
 import frappe
 from frappe import _
 from frappe.utils import cint
 from frappe.utils.verified_command import _sign_message
+from werkzeug.utils import send_file
 
 from flutter_utils.verification import service
 from flutter_utils.verification.evidence import current_rows, evidence_urls, get_max_file_size
@@ -431,7 +433,7 @@ def _has_valid_signature() -> bool:
 
 
 @frappe.whitelist(allow_guest=True)
-def download_evidence(file_id: str) -> None:
+def download_evidence(file_id: str) -> Any:
 	"""Serve one evidence file from a signed link or an authenticated session.
 
 	The app (``Image.network``, the video player) and the phone browser fetch a
@@ -441,6 +443,8 @@ def download_evidence(file_id: str) -> None:
 	so a logged-in owner/reviewer is authorized by the subject read policy.
 
 	Served inline with the real mimetype so images, videos and PDFs preview.
+	Local files stream through Werkzeug for both full and Range responses, so
+	large videos are never read into memory and media players can seek.
 	"""
 	signed = _has_valid_signature()
 	if not signed:
@@ -461,6 +465,24 @@ def download_evidence(file_id: str) -> None:
 		},
 	):
 		frappe.throw(_("Evidence is not linked to this document."), frappe.PermissionError)
+	# Browsers and native video players request byte ranges for media. Streaming
+	# every local response through Werkzeug keeps large videos out of memory,
+	# advertises range support on the first 200, and lets the same handler answer
+	# a later request with 206. Remote-storage files keep the legacy path.
+	if frappe.request and not str(file.get("file_url") or "").startswith(("http://", "https://")):
+		response = send_file(
+			file.get_full_path(),
+			frappe.request.environ,
+			mimetype=mimetypes.guess_type(file.file_name)[0]
+			or "application/octet-stream",
+			as_attachment=False,
+			download_name=file.file_name,
+			conditional=True,
+		)
+		response.headers.setdefault("Accept-Ranges", "bytes")
+		response.headers.setdefault("Cache-Control", "private, no-store")
+		response.headers.setdefault("X-Content-Type-Options", "nosniff")
+		return response
 	frappe.local.response.filename = file.file_name
 	frappe.local.response.filecontent = file.get_content()
 	frappe.local.response.type = "download"
