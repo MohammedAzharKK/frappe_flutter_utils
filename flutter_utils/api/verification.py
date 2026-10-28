@@ -473,14 +473,14 @@ def download_evidence(file_id: str) -> Any:
 		response = send_file(
 			file.get_full_path(),
 			frappe.request.environ,
-			mimetype=mimetypes.guess_type(file.file_name)[0]
-			or "application/octet-stream",
+			mimetype=mimetypes.guess_type(file.file_name)[0] or "application/octet-stream",
 			as_attachment=False,
 			download_name=file.file_name,
 			conditional=True,
 		)
 		response.headers.setdefault("Accept-Ranges", "bytes")
-		response.headers.setdefault("Cache-Control", "private, no-store")
+		# send_file already sets no-cache, which still permits storing evidence.
+		response.headers["Cache-Control"] = "private, no-store"
 		response.headers.setdefault("X-Content-Type-Options", "nosniff")
 		return response
 	frappe.local.response.filename = file.file_name

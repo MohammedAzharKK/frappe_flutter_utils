@@ -825,15 +825,11 @@ class TestVerification(TestCase):
 			def request(method: str, query: bytes) -> Any:
 				return SimpleNamespace(method=method, query_string=query, form={}, data=None)
 
-			with patch(
-				"frappe.request", request("GET", b"file_id=abc&_signature=sig:file_id=abc")
-			):
+			with patch("frappe.request", request("GET", b"file_id=abc&_signature=sig:file_id=abc")):
 				self.assertTrue(api._has_valid_signature())
 			with patch("frappe.request", request("GET", b"file_id=abc&_signature=deadbeef")):
 				self.assertFalse(api._has_valid_signature())
-			with patch(
-				"frappe.request", request("POST", b"file_id=abc&_signature=sig:file_id=abc")
-			):
+			with patch("frappe.request", request("POST", b"file_id=abc&_signature=sig:file_id=abc")):
 				self.assertFalse(api._has_valid_signature())
 
 	def test_api_download_serves_inline_for_authenticated_session(self) -> None:
@@ -877,10 +873,12 @@ class TestVerification(TestCase):
 				self._serve_from_file(file),
 			):
 				response = api.download_evidence(file.name)
+				self.addCleanup(response.close)
 		self.assertEqual(response.status_code, 206)
 		self.assertEqual(b"".join(response.response), b"2345")
 		self.assertEqual(response.headers["Content-Range"], "bytes 2-5/10")
 		self.assertEqual(response.headers["Accept-Ranges"], "bytes")
+		self.assertEqual(response.headers["Cache-Control"], "private, no-store")
 		self.assertTrue(response.headers["Content-Type"].startswith("video/mp4"))
 		self.assertIn("inline", response.headers["Content-Disposition"])
 
@@ -903,10 +901,12 @@ class TestVerification(TestCase):
 				self._serve_from_file(file),
 			):
 				response = api.download_evidence(file.name)
+				self.addCleanup(response.close)
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(b"".join(response.response), b"0123456789")
 		self.assertEqual(response.headers["Accept-Ranges"], "bytes")
 		self.assertEqual(response.headers["Content-Length"], "10")
+		self.assertEqual(response.headers["Cache-Control"], "private, no-store")
 		self.assertTrue(response.headers["Content-Type"].startswith("video/mp4"))
 		self.assertIn("inline", response.headers["Content-Disposition"])
 
