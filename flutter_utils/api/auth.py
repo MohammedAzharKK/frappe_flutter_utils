@@ -1,6 +1,11 @@
+import hashlib
 import json
 import random
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
+from uuid import uuid4
 
 import frappe
 import phonenumbers
@@ -17,7 +22,7 @@ from flutter_utils.device_credentials import (
 	normalize_device_name,
 )
 
-OTP_PURPOSES = {"login", "signup", "reset_password"}
+OTP_PURPOSES = {"login", "signup", "reset_password", "verify_mobile"}
 OTP_CHANNELS = {"email", "mobile"}
 AUTH_MODES = {"token", "session"}
 
@@ -147,7 +152,11 @@ def send_otp(
 			),
 			frappe.AuthenticationError,
 		)
+	if purpose == "verify_mobile" and frappe.session.user == "Guest":
+		frappe.throw(_("Sign in before verifying a mobile number."), frappe.AuthenticationError)
 	context = resolve_otp_context(channel=channel, email=email, mobile_no=mobile_no)
+	if purpose == "verify_mobile" and context["channel"] != "mobile":
+		frappe.throw(_("Mobile verification requires a mobile number."))
 
 	enforce_otp_resend_cooldown(purpose, context["channel"], context["recipient"])
 
@@ -156,11 +165,18 @@ def send_otp(
 	if purpose == "login":
 		user = validate_login_target(context)
 		payload = {"otp": otp}
+		test_otp = _get_test_phone_otp(settings, purpose, context, user)
+		if test_otp:
+			payload["otp"] = test_otp
+			payload["test_phone_login"] = _test_phone_challenge_identity(settings, user)
 		recipient_name = user.full_name
 	elif purpose == "reset_password":
 		user = validate_reset_password_target(context)
 		payload = {"otp": otp}
 		recipient_name = user.full_name
+	elif purpose == "verify_mobile":
+		payload = {"otp": otp, "mobile_no": context["recipient"]}
+		recipient_name = frappe.utils.get_fullname(frappe.session.user) or frappe.session.user
 	else:
 		payload = validate_signup_target(context, full_name=full_name, email=email)
 		payload["otp"] = otp
@@ -172,6 +188,10 @@ def send_otp(
 		json.dumps(payload),
 		ttl=get_otp_ttl_seconds(),
 	)
+
+	if payload.get("test_phone_login"):
+		record_otp_resend_cooldown(purpose, context["channel"], context["recipient"])
+		return build_otp_send_response()
 
 	if settings.test_mode:
 		record_otp_resend_cooldown(purpose, context["channel"], context["recipient"])
@@ -212,6 +232,8 @@ def verify_otp(
 	"""
 	purpose = normalize_otp_purpose(purpose)
 	auth_mode = normalize_auth_mode(auth_mode)
+	if purpose == "verify_mobile" and frappe.session.user == "Guest":
+		frappe.throw(_("Sign in before verifying a mobile number."), frappe.AuthenticationError)
 	if auth_mode == "session" and purpose != "login":
 		frappe.throw(_("Browser session authentication is only available for login."))
 	if purpose in {"login", "signup"} and auth_mode == "token":
@@ -225,7 +247,22 @@ def verify_otp(
 	if not data or data.get("otp") != otp.strip():
 		frappe.throw(_("Invalid or expired OTP."))
 
+	if data.get("test_phone_login"):
+		settings = get_flutter_utils_settings()
+		user = validate_login_target(context)
+		configured_otp = _get_test_phone_otp(settings, purpose, context, user)
+		if (
+			not configured_otp
+			or configured_otp != otp.strip()
+			or data["test_phone_login"] != _test_phone_challenge_identity(settings, user)
+		):
+			otp_delete(cache_key)
+			frappe.throw(_("Invalid or expired OTP."))
+
 	otp_delete(cache_key)
+
+	if purpose == "verify_mobile":
+		return {"verified": True, "mobile_no": context["recipient"]}
 
 	if purpose == "login":
 		user = (
@@ -369,10 +406,27 @@ def verify_password_reset_otp(email: str, otp: str, new_password: str) -> dict:
 	)
 
 
+@frappe.whitelist(methods=["POST"])
+def send_verify_mobile_otp(mobile_no: str) -> dict:
+	"""Send an SMS OTP to a signed-in user so they can verify a contact number."""
+	return send_otp(purpose="verify_mobile", channel="mobile", mobile_no=mobile_no)
+
+
+@frappe.whitelist(methods=["POST"])
+def verify_verify_mobile_otp(mobile_no: str, otp: str) -> dict:
+	"""Confirm a contact-number OTP for the signed-in user."""
+	return verify_otp(
+		purpose="verify_mobile",
+		channel="mobile",
+		mobile_no=mobile_no,
+		otp=otp,
+	)
+
+
 def normalize_otp_purpose(purpose: str) -> str:
 	normalized = purpose.strip().lower()
 	if normalized not in OTP_PURPOSES:
-		frappe.throw(_("Purpose must be one of: login, signup, reset_password."))
+		frappe.throw(_("Purpose must be one of: login, signup, reset_password, verify_mobile."))
 	return normalized
 
 
@@ -401,6 +455,47 @@ def resolve_otp_context(
 	if not normalized_mobile:
 		frappe.throw(_("Mobile number is required for mobile OTP."))
 	return {"channel": "mobile", "recipient": normalized_mobile}
+
+
+def _get_test_phone_otp(settings: Any, purpose: str, context: dict[str, str], user: Any) -> str | None:
+	"""Only an explicitly configured, unprivileged mobile login may skip delivery."""
+	if (
+		not settings.get("enable_test_phone_login")
+		or not settings.get("enable_mobile_otp")
+		or purpose != "login"
+		or context["channel"] != "mobile"
+		or context["recipient"] != settings.get("test_phone_number")
+	):
+		return None
+	_validate_test_phone_user(user)
+	code = settings.get_password("test_phone_otp", raise_exception=False) or ""
+	if not code.isascii() or not code.isdigit() or len(code) != int(settings.otp_length or 4):
+		frappe.throw(_("Test phone login is not configured correctly."))
+	return code
+
+
+def _validate_test_phone_user(user: Any) -> None:
+	if (
+		not user.enabled
+		or user.name in {"Administrator", "Guest"}
+		or user.user_type != "Website User"
+		or set(frappe.get_roles(user.name)).intersection({"System Manager", "Super Admin"})
+	):
+		frappe.throw(_("Test phone login requires an enabled, non-admin Website User."))
+
+
+def _test_phone_challenge_identity(settings: Any, user: Any) -> str:
+	"""Bind challenges to this saved configuration and account, not just the code."""
+	return hashlib.sha256(
+		json.dumps(
+			[
+				str(settings.modified),
+				settings.test_phone_number,
+				user.name,
+				settings.get_password("test_phone_otp", raise_exception=False),
+			]
+		).encode()
+	).hexdigest()
 
 
 def validate_login_target(context: dict[str, str]):
@@ -466,19 +561,37 @@ def validate_signup_target(context: dict[str, str], full_name: str | None, email
 
 
 def assert_signup_identity_available(email: str | None, mobile_no: str | None = None) -> None:
-	if email and frappe.db.get_value("User", email, "enabled"):
-		frappe.throw(_("An account with this email already exists. Please sign in instead."))
+	# Existence, not just "enabled": a disabled row still owns the identity and
+	# inserting a second User with the same email/phone can only fail. A
+	# self-deleted account must rejoin through sign-in instead.
+	if email and frappe.db.exists("User", email):
+		frappe.throw(
+			_(
+				"An account with this email already exists. Sign in instead, "
+				"or contact support if you cannot access it."
+			)
+		)
 
 	if mobile_no and frappe.get_all(
 		"User",
-		filters={"mobile_no": mobile_no, "enabled": 1},
+		filters={"mobile_no": mobile_no},
 		pluck="name",
 		limit=1,
 	):
-		frappe.throw(_("An account with this mobile number already exists. Please sign in instead."))
+		frappe.throw(
+			_(
+				"An account with this mobile number already exists. Sign in instead, "
+				"or contact support if you cannot access it."
+			)
+		)
 
 
 def build_otp_cache_key(purpose: str, channel: str, recipient: str) -> str:
+	if purpose == "verify_mobile":
+		# Contact verification belongs to the authenticated requester. Keep login,
+		# signup and password-reset challenges (and recipient cooldowns) unchanged.
+		user_scope = hashlib.sha256(frappe.session.user.encode()).hexdigest()
+		return f"{purpose}_otp:{user_scope}:{channel}:{recipient}"
 	return f"{purpose}_otp:{channel}:{recipient}"
 
 
@@ -584,6 +697,15 @@ def get_enabled_user_by_email(email: str):
 
 
 def create_user(full_name: str, email: str, mobile_no: str | None = None) -> Any:
+	if frappe.db.exists("User", email):
+		# Never attempt a duplicate insert (User.name is the email). Self-deleted
+		# identities rejoin through sign-in; admins handle the rest.
+		frappe.throw(
+			_(
+				"An account with this email already exists. Sign in instead, "
+				"or contact support if you cannot access it."
+			)
+		)
 	user = frappe.new_doc("User")
 	user.first_name = full_name
 	user.email = email
@@ -617,6 +739,18 @@ def get_session_context() -> dict[str, Any]:
 	return build_browser_session_response(frappe.get_doc("User", frappe.session.user))
 
 
+@frappe.whitelist(methods=["GET"])
+def get_token_context() -> dict[str, Any]:
+	"""Return managed-device identity without creating or persisting a browser session."""
+	from flutter_utils.authentication.context import require_current_device_credential
+
+	require_current_device_credential()
+	return {
+		**_build_user_context(frappe.get_doc("User", frappe.session.user)),
+		"auth_mode": "token",
+	}
+
+
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 def logout_session() -> dict[str, str]:
 	"""End the current browser session and clear its cookies."""
@@ -637,15 +771,21 @@ def build_browser_session_response(user: Any) -> dict[str, Any]:
 	from frappe.sessions import get_csrf_token
 
 	return {
-		"authenticated": True,
+		**_build_user_context(user),
 		"auth_mode": "session",
+		"csrf_token": get_csrf_token(),
+	}
+
+
+def _build_user_context(user: Any) -> dict[str, Any]:
+	return {
+		"authenticated": True,
 		"user": user.name,
 		"full_name": user.full_name,
 		"email": user.email,
 		"mobile_no": user.mobile_no,
 		"user_type": user.user_type,
 		"roles": sorted(frappe.get_roles(user.name)),
-		"csrf_token": get_csrf_token(),
 	}
 
 
@@ -682,11 +822,38 @@ def firebase_token_login(
 
 	hash_device_id(device_id)
 	assert device_id is not None
-	identity = verify_firebase_id_token(id_token)
-	user = resolve_firebase_user(identity)
-	response = issue_device_api_credentials(user, device_id, device_name)
-	response.update({"auth_mode": "token", "provider": identity.provider})
+	attempt_id = uuid4().hex
+	with _firebase_login_timing("login_total", attempt_id):
+		with _firebase_login_timing("verify_identity", attempt_id):
+			identity = verify_firebase_id_token(id_token)
+		with _firebase_login_timing("resolve_user", attempt_id):
+			user = resolve_firebase_user(identity)
+		with _firebase_login_timing("issue_credentials", attempt_id):
+			response = issue_device_api_credentials(user, device_id, device_name)
+		response.update({"auth_mode": "token", "provider": identity.provider})
 	return response
+
+
+@contextmanager
+def _firebase_login_timing(stage: str, attempt_id: str) -> Iterator[None]:
+	started = time.monotonic()
+	result = "failed"
+	try:
+		yield
+		result = "ok"
+	finally:
+		logger = frappe.logger("firebase_auth", allow_site=True)
+		logger.setLevel("INFO")
+		logger.info(
+			json.dumps(
+				{
+					"stage": stage,
+					"attempt_id": attempt_id,
+					"result": result,
+					"seconds": round(time.monotonic() - started, 3),
+				}
+			)
+		)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -758,7 +925,9 @@ def send_otp_email(email: str, otp: str, context: str) -> None:
 def ensure_email_otp_delivery_is_configured() -> None:
 	email_account = EmailAccount.find_outgoing(_raise_error=True)
 	if email_account.service == "Sendgrid HTTP":
-		api_key = email_account.get_password("password") or frappe.conf.get("sendgrid_api_key")
+		api_key = email_account.get_password("password", raise_exception=False) or frappe.conf.get(
+			"sendgrid_api_key"
+		)
 		if not api_key:
 			frappe.throw(_("SendGrid API key is not configured for the outgoing email account."))
 		return

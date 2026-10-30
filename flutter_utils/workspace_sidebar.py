@@ -3,7 +3,14 @@ from __future__ import annotations
 from typing import Any
 
 import frappe
+from frappe.desk.desk_views import DeskViews
 from frappe.desk.desktop import get_workspaces
+try:
+	from frappe.desk.utils import is_item_allowed
+except ImportError:
+	# Frappe 16 versions before the helper moved into desk.utils.
+	def is_item_allowed(name: str, item_type: str, context: Any) -> bool:
+		return bool(DeskViews.is_item_allowed(context, name, item_type, context.allowed_workspaces))
 
 
 def get_default_workspace_sidebar(user: str | None = None) -> dict[str, Any] | None:
@@ -67,20 +74,15 @@ def get_sidebar_for_default_workspace(user: str | None = None) -> Any | None:
 def _get_permitted_sidebar_items(sidebar: Any, allowed_workspaces: set[str]) -> list[dict[str, Any]]:
 	"""Keep section breaks only when they contain at least one permitted child link."""
 	items: list[dict[str, Any]] = []
+	permission_context = DeskViews()
+	permission_context.allowed_workspaces = allowed_workspaces
 	pending_section: dict[str, Any] | None = None
 	for item in sidebar.items:
 		if item.type == "Section Break":
 			pending_section = _serialize_sidebar_item(item)
 			continue
 
-		if (
-			item.type != "Link"
-			or not item.link_type
-			or not (
-				hasattr(sidebar, "is_item_allowed")
-				and sidebar.is_item_allowed(item.link_to, item.link_type, allowed_workspaces)
-			)
-		):
+		if item.type != "Link" or not item.link_type or not is_item_allowed(item.link_to, item.link_type, permission_context):
 			continue
 
 		if pending_section and item.child:

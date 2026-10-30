@@ -43,6 +43,10 @@
   "otp_length",
   "otp_default_region",
   "test_mode",
+  "test_phone_section",
+  "enable_test_phone_login",
+  "test_phone_number",
+  "test_phone_otp",
   "firebase_auth_section",
   "enable_firebase_auth",
   "enable_firebase_push",
@@ -316,6 +320,34 @@
    "fieldname": "test_mode",
    "fieldtype": "Check",
    "label": "Test Mode"
+  },
+  {
+   "fieldname": "test_phone_section",
+   "fieldtype": "Section Break",
+   "label": "Test Phone Login",
+   "description": "Use a dedicated demo Website User, never a personal or administrator account. Only mobile login skips delivery; other authentication flows are unchanged. Keep global Test Mode disabled in production."
+  },
+  {
+   "fieldname": "enable_test_phone_login",
+   "fieldtype": "Check",
+   "label": "Enable Test Phone Login",
+   "default": "0"
+  },
+  {
+   "fieldname": "test_phone_number",
+   "fieldtype": "Data",
+   "label": "Test Phone Number",
+   "depends_on": "eval:doc.enable_test_phone_login",
+   "mandatory_depends_on": "eval:doc.enable_test_phone_login",
+   "description": "International format including country code, for example +15551234567. Must belong to an existing enabled, non-admin Website User."
+  },
+  {
+   "fieldname": "test_phone_otp",
+   "fieldtype": "Password",
+   "label": "Static OTP",
+   "depends_on": "eval:doc.enable_test_phone_login",
+   "mandatory_depends_on": "eval:doc.enable_test_phone_login",
+   "description": "Must match OTP Length. Never delivered or returned by the OTP API. Users must request a new challenge for each login."
   },
   {
    "fieldname": "firebase_auth_section",

@@ -83,6 +83,7 @@ class FlutterUtilsSettings(Document):
 			frappe.throw(_("Enable at least one authentication provider."))
 
 		self._validate_firebase_settings()
+		self._validate_test_phone_login()
 
 		if not self.enable_mobile_otp or self.test_mode:
 			return
@@ -111,6 +112,25 @@ class FlutterUtilsSettings(Document):
 			)
 			if not value:
 				frappe.throw(_("{0} is required when Mobile OTP is enabled.").format(label))
+
+	def _validate_test_phone_login(self) -> None:
+		if not self.get("enable_test_phone_login"):
+			return
+		if not self.enable_mobile_otp:
+			frappe.throw(_("Enable Mobile OTP before enabling Test Phone Login."))
+		from flutter_utils.api.auth import (
+			_validate_test_phone_user,
+			get_enabled_user_by_mobile,
+			normalize_mobile_number,
+		)
+
+		if not self.get("test_phone_number") or not self.test_phone_number.strip().startswith("+"):
+			frappe.throw(_("Test Phone Number must include the international country code."))
+		self.test_phone_number = normalize_mobile_number(self.test_phone_number)
+		code = self.get_password("test_phone_otp", raise_exception=False) or ""
+		if not code.isascii() or not code.isdigit() or len(code) != int(self.otp_length or 4):
+			frappe.throw(_("Static OTP must contain exactly the configured OTP Length in digits."))
+		_validate_test_phone_user(get_enabled_user_by_mobile(self.test_phone_number))
 
 	def on_update(self) -> None:
 		previous = self.get_doc_before_save()

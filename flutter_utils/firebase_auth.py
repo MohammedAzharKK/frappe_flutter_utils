@@ -8,6 +8,7 @@ import frappe
 from firebase_admin import auth
 from frappe import _
 
+from flutter_utils.firebase_tokens import verify_id_token
 from flutter_utils.flutter_utils.doctype.firebase_auth_identity.firebase_auth_identity import (
 	_build_identity_key,
 )
@@ -72,12 +73,15 @@ def verify_firebase_id_token(id_token: str) -> VerifiedFirebaseIdentity:
 
 	settings = _get_enabled_firebase_settings()
 	app = get_firebase_app(settings)
+	started = time.monotonic()
+	result = "failed"
 	try:
-		claims = auth.verify_id_token(
+		claims = verify_id_token(
 			id_token.strip(),
 			app=app,
 			check_revoked=bool(settings.firebase_check_revoked_tokens),
 		)
+		result = "ok"
 	except auth.ExpiredIdTokenError as exc:
 		raise FirebaseAuthError(
 			_("Firebase session has expired. Please sign in again."), "firebase_token_expired"
@@ -96,13 +100,26 @@ def verify_firebase_id_token(id_token: str) -> VerifiedFirebaseIdentity:
 		) from exc
 	except Exception as exc:
 		frappe.log_error(
-			title="Firebase Token Verification Failed", message=frappe.get_traceback(with_context=False)
+			title="Firebase Token Verification Failed",
+			message=f"Verification unavailable ({type(exc).__name__}). See firebase_auth timing logs.",
 		)
 		raise FirebaseAuthError(
 			_("Firebase Authentication is temporarily unavailable."),
 			"firebase_unavailable",
 			503,
 		) from exc
+	finally:
+		logger = frappe.logger("firebase_auth", allow_site=True)
+		logger.setLevel("INFO")
+		logger.info(
+			json.dumps(
+				{
+					"stage": "token_verification",
+					"result": result,
+					"seconds": round(time.monotonic() - started, 3),
+				}
+			)
+		)
 
 	project_id = settings.firebase_project_id.strip()
 	if claims.get("aud") != project_id:
@@ -141,12 +158,12 @@ def resolve_firebase_user(identity: VerifiedFirebaseIdentity) -> Any:
 	identity_name = _build_identity_key(identity.project_id, identity.uid)
 	if frappe.db.exists("Firebase Auth Identity", identity_name):
 		mapping = frappe.get_doc("Firebase Auth Identity", identity_name)
-		user = _get_enabled_user(mapping.user)
+		user = _get_enabled_user(mapping.user, identity)
 		_update_identity_mapping(mapping, identity)
 		_sync_verified_identity_to_user(user, identity)
 		return user
 
-	user = _find_existing_user(identity)
+	user = _find_existing_user(identity, allow_reactivation=True)
 	settings = _get_enabled_firebase_settings()
 	if not user:
 		if not settings.firebase_auto_create_users:
@@ -275,10 +292,12 @@ def _validate_provider(settings: Any, provider: str) -> None:
 	raise FirebaseAuthError(message, code, 403)
 
 
-def _find_existing_user(identity: VerifiedFirebaseIdentity):
+def _find_existing_user(identity: VerifiedFirebaseIdentity, *, allow_reactivation: bool = False):
 	if identity.provider == "google.com" and identity.email:
 		if frappe.db.exists("User", identity.email):
-			return _get_enabled_user(identity.email)
+			return _get_enabled_user(
+				identity.email, identity if allow_reactivation else None
+			)
 		return None
 
 	if identity.provider == "phone" and identity.phone_number:
@@ -295,7 +314,9 @@ def _find_existing_user(identity: VerifiedFirebaseIdentity):
 				409,
 			)
 		if users:
-			return _get_enabled_user(users[0].name)
+			return _get_enabled_user(
+				users[0].name, identity if allow_reactivation else None
+			)
 	return None
 
 
@@ -363,12 +384,40 @@ def _raise_manual_merge_required() -> None:
 	)
 
 
-def _get_enabled_user(user_name: str):
+def _get_enabled_user(user_name: str, identity: VerifiedFirebaseIdentity | None = None):
 	if not frappe.db.exists("User", user_name):
 		raise FirebaseAuthError(_("The linked account no longer exists."), "firebase_user_not_found", 403)
 	if not frappe.db.get_value("User", user_name, "enabled"):
+		if identity is not None and (user := _reactivate_disabled_user(user_name, identity)):
+			return user
 		raise FirebaseAuthError(_("Your account has been disabled."), "frappe_user_disabled", 403)
 	return frappe.get_doc("User", user_name)
+
+
+def _reactivate_disabled_user(
+	user_name: str, identity: VerifiedFirebaseIdentity
+) -> Any | None:
+	"""Give the owning app a chance to reopen a self-deleted identity.
+
+	Apps register ``firebase_user_reactivation`` hooks. A hook returns the user
+	when the account may rejoin and ``None`` when it must stay blocked (admin
+	disable, fraud block or no deletion marker). Hook failures are logged and
+	treated as "stay blocked" so a broken integration never grants access.
+	"""
+	for method in frappe.get_hooks("firebase_user_reactivation") or []:
+		try:
+			user = frappe.get_attr(method)(user_name=user_name, identity=identity)
+		except frappe.AuthenticationError:
+			raise
+		except Exception:
+			frappe.log_error(
+				title="Firebase user reactivation failed",
+				message=frappe.get_traceback(with_context=False),
+			)
+			continue
+		if user:
+			return frappe.get_doc("User", user if isinstance(user, str) else user.name)
+	return None
 
 
 def _create_website_user(identity: VerifiedFirebaseIdentity):
