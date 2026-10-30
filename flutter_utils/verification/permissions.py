@@ -57,9 +57,11 @@ def file_query_conditions(user: str | None = None) -> str:
 	)
 
 
-def file_permission(doc: Any, ptype: str | None = None, user: str | None = None) -> bool | None:
+def file_permission(doc: Any, ptype: str | None = None, user: str | None = None) -> bool:
 	if doc.attached_to_doctype not in RECORD_DOCTYPES:
-		return None
+		# Frappe treats every falsy hook result as a denial. Let ordinary files
+		# continue through the native File hook and role/document permissions.
+		return True
 	if (user or frappe.session.user) == "Guest":
 		return False
 	if ptype not in {None, "read", "select"}:

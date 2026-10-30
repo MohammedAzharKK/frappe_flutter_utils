@@ -175,6 +175,30 @@ class CustomSubjectPolicy(policies.VerificationPolicy):
 		return "Test Organization", doc.reference_name
 
 
+class TestOrdinaryFilePermissions(TestCase):
+	def test_unrelated_files_continue_to_native_permission_check(self) -> None:
+		from frappe.permissions import has_controller_permissions
+
+		verification_hook = "flutter_utils.verification.permissions.file_permission"
+		native_hook = "frappe.core.doctype.file.file.has_permission"
+		for attached_to in ("Company", "Employee", None):
+			for native_allowed in (True, False):
+				with self.subTest(attached_to=attached_to, native_allowed=native_allowed):
+					doc = frappe._dict(doctype="File", attached_to_doctype=attached_to)
+
+					def call_hook(method: str, **kwargs: Any) -> bool:
+						if method == verification_hook:
+							return permissions.file_permission(kwargs["doc"], kwargs["ptype"], kwargs["user"])
+						return native_allowed
+
+					with (
+						patch.object(frappe, "get_hooks", return_value={"File": [native_hook, verification_hook]}),
+						patch.object(frappe, "call", side_effect=call_hook) as call,
+					):
+						self.assertEqual(has_controller_permissions(doc, "create", user="alice"), native_allowed)
+						self.assertEqual(call.call_count, 2)
+
+
 class TestVerification(TestCase):
 	def setUp(self) -> None:
 		self.stack = ExitStack()
