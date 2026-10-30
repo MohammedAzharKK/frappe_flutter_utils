@@ -10,6 +10,8 @@ try:
 except ImportError:
 	# Frappe 16 versions before the helper moved into desk.utils.
 	def is_item_allowed(name: str, item_type: str, context: Any) -> bool:
+		if item_type.lower() == "workspace":
+			return name in context.allowed_workspaces
 		return bool(DeskViews.is_item_allowed(context, name, item_type, context.allowed_workspaces))
 
 
