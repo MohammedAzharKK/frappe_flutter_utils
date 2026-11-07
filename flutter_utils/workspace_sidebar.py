@@ -77,6 +77,7 @@ def _get_permitted_sidebar_items(sidebar: Any, allowed_workspaces: set[str]) -> 
 	"""Keep section breaks only when they contain at least one permitted child link."""
 	items: list[dict[str, Any]] = []
 	permission_context = DeskViews()
+	permission_context.can_read = frappe.get_user().get_can_read()
 	permission_context.allowed_workspaces = allowed_workspaces
 	pending_section: dict[str, Any] | None = None
 	for item in sidebar.items:

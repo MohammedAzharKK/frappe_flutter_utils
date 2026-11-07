@@ -10,6 +10,21 @@ from flutter_utils.workspace_sidebar import _get_permitted_sidebar_items, get_de
 
 
 class TestWorkspaceSidebarPermissions(TestCase):
+	def setUp(self) -> None:
+		user_patch = patch("flutter_utils.workspace_sidebar.frappe.get_user")
+		self.user_permissions = user_patch.start()
+		self.user_permissions.return_value.get_can_read.return_value = ["Employee"]
+		self.addCleanup(user_patch.stop)
+
+	def test_native_context_has_current_users_readable_doctypes(self) -> None:
+		sidebar = SimpleNamespace(items=[
+			frappe._dict(type="Link", label="Employees", link_to="Employee", link_type="DocType"),
+			frappe._dict(type="Link", label="Users", link_to="User", link_type="DocType"),
+		])
+		with patch("flutter_utils.workspace_sidebar.is_item_allowed", side_effect=lambda name, kind, context: name in context.can_read):
+			result = _get_permitted_sidebar_items(sidebar, set())
+		self.assertEqual([item["label"] for item in result], ["Employees"])
+
 	def test_native_permission_helper_excludes_unavailable_workspaces(self) -> None:
 		sidebar = SimpleNamespace(
 			items=[
